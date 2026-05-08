@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 from datetime import datetime
 from database import EcoMatchDB
 from upload import render_upload_page
@@ -46,7 +47,7 @@ if not st.session_state.logged_in:
             st.session_state.trust_score = user_data.get('trust_score', 10)
             st.rerun()
 
-# ── Global CSS (Original Colors Kept) ──────────────────────────────────────────
+# ── Global CSS (Original Styles) ──────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,600&display=swap');
@@ -92,10 +93,34 @@ html, body, .stApp {
 
 .card { background: #ffffff; border-radius: var(--radius); border: 1px solid var(--green-200); box-shadow: var(--shadow-sm); padding: 22px 24px; margin-bottom: 15px; }
 
-/* Customizing the Sidebar Toggle Button */
-button[data-testid="stSidebarCollapseButton"] {
-    visibility: visible !important; color: #15803d !important; background-color: #ffffff !important; border: 1px solid #bbf7d0 !important;
+/* Dashboard Metrics Styles */
+.metric-row { display:flex; gap:16px; margin-bottom:24px; flex-wrap:wrap; }
+.metric-card {
+    flex: 1; min-width:180px; background: white; border: 1px solid var(--green-200);
+    border-radius: var(--radius); padding: 20px 22px; box-shadow: var(--shadow-sm);
+    position: relative; overflow: hidden;
 }
+.metric-card::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:3px;
+    background: linear-gradient(90deg, var(--green-500), var(--teal-400));
+}
+.metric-value {
+    font-family:'Fraunces',serif; font-size:1.9rem; font-weight:600;
+    color:var(--green-800); line-height:1; margin-bottom:4px;
+}
+.metric-label { font-size:.78rem; color:var(--neutral-500); text-transform:uppercase; font-weight:600; }
+.metric-delta { font-size: 0.75rem; margin-top: 4px; }
+
+/* Trust UI Specific Styles */
+.trust-ring-wrap { display: flex; flex-direction: column; align-items: center; padding: 24px; background: white; border-radius: 14px; border: 1px solid #bbf7d0; }
+.trust-score-num { font-family: 'Fraunces', serif; font-size: 3.5rem; color: #15803d; font-weight: 600; }
+.trust-score-denom { font-size: 1.2rem; color: #737373; }
+.trust-label { font-weight: 700; color: #16a34a; margin-top: 5px; }
+.trust-bar-bg { height: 10px; border-radius: 999px; background: #dcfce7; width: 100%; overflow: hidden; }
+.trust-bar-fill { height: 100%; background: linear-gradient(90deg, #22c55e, #2dd4bf); }
+.rule-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f0fdf4; }
+.rule-impact-pos { color: #16a34a; font-weight: 700; }
+.rule-impact-neg { color: #dc2626; font-weight: 700; }
 
 div.stButton > button {
     background: linear-gradient(135deg, var(--green-600), var(--teal-600)) !important; color: white !important;
@@ -136,7 +161,7 @@ with st.sidebar:
 page_key = st.session_state.current_page.strip().split("  ", 1)[-1]
 
 if not st.session_state.logged_in:
-    # ── AUTHENTICATION SECTION (Only shows when logged out) ──
+    # ── AUTHENTICATION SECTION ──
     st.markdown("""<div class="page-header"><h1>Welcome to E-match</h1><p>Malaysia's trusted platform for community resource sharing</p></div>""", unsafe_allow_html=True)
 
     _, center, _ = st.columns([1, 2, 1])
@@ -186,14 +211,9 @@ else:
         render_marketplace_page()
 
     elif page_key == "Upload Item":
-        # Check if the user just successfully uploaded something
         if st.session_state.get("upload_success", False):
-            st.balloons()  # 🎈 The balloons trigger here
-            
+            st.balloons()
             st.markdown('<div class="page-header"><h1>✅ Item Posted!</h1><p>Your resource is now live on the marketplace.</p></div>', unsafe_allow_html=True)
-            
-            st.success("Listing successful!")
-            
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("📦 Post Another Item", use_container_width=True):
@@ -205,7 +225,6 @@ else:
                     st.session_state.current_page = "🛒  Marketplace"
                     st.rerun()
         else:
-            # If they haven't uploaded yet, show the form
             render_upload_page()
 
     elif page_key == "My Items":
@@ -228,10 +247,138 @@ else:
                 st.divider()
 
     elif page_key == "Trust & Safety":
-        st.markdown("""<div class="page-header"><h1>🛡️ Trust & Safety</h1><p>Your reputation and community standing</p></div>""", unsafe_allow_html=True)
-        st.metric("Trust Score", f"{st.session_state.trust_score} / 10")
-        st.success("✅ Follow the community guidelines to keep your score high.")
+        st.markdown("""
+        <div class="page-header">
+            <h1>🛡️ Trust & Safety</h1>
+            <p>Your reputation is your currency on E-match</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        trust_score = st.session_state.get("trust_score", 10)
+        trust_pct   = int((trust_score / 10) * 100)
+        col_score, col_rules = st.columns([1, 2])
+
+        with col_score:
+            st.markdown(f"""
+            <div class="trust-ring-wrap">
+                <span style="font-size:2rem">⭐</span>
+                <div style="margin-top:12px;text-align:center">
+                    <span class="trust-score-num">{trust_score}</span>
+                    <span class="trust-score-denom"> / 10</span>
+                </div>
+                <div class="trust-label">{"Excellent Standing" if trust_score >= 8 else "Good Standing" if trust_score >= 5 else "Needs Improvement"}</div>
+                <div class="trust-bar-bg" style="margin-top:14px">
+                    <div class="trust-bar-fill" style="width:{trust_pct}%"></div>
+                </div>
+                <div style="margin-top:14px;text-align:center">
+                    <p style="font-size:.8rem;color:#737373;margin:2px 0">📦 23 successful matches</p>
+                    <p style="font-size:.8rem;color:#737373;margin:2px 0">📅 Member since Jan 2025</p>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col_rules:
+            st.markdown("<div class='card'><p class='form-section-title' style='border-bottom:1px solid #dcfce7;padding-bottom:10px'>📋 Score Rules</p>", unsafe_allow_html=True)
+            rules = [
+                ("Successful match completed",        "+1.0", True),
+                ("Item listed with accurate info",     "+0.5", True),
+                ("Uploaded a clear item photo",        "+0.5", True),
+                ("Fast response to claim request",     "+0.5", True),
+                ("Misconduct reported & verified",     "−3.0", False),
+                ("Listing an expired item",            "−1.0", False),
+                ("No-show for agreed pickup",          "−2.0", False),
+            ]
+            for rule, impact, pos in rules:
+                cls = "rule-impact-pos" if pos else "rule-impact-neg"
+                st.markdown(f"""
+                <div class="rule-row">
+                    <span style="font-size:.875rem;color:#404040">{rule}</span>
+                    <span class="{cls}">{impact}</span>
+                </div>""", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        st.markdown("---")
+        st.markdown("### 🚨 Report Misconduct")
+        r1, r2 = st.columns(2)
+        with r1:
+            st.text_input("Username to report", placeholder="Enter their username")
+        with r2:
+            st.selectbox("Reason", ["Misleading listing", "No-show for pickup", "Inappropriate behaviour", "Fraudulent activity", "Other"])
+        st.text_area("Additional details (optional)", placeholder="Describe what happened, include dates and item names if possible…", height=90)
+        if st.button("Submit Report", key="btn_report"):
+            st.error("⚠️ Report submitted. Our team will review and adjust trust scores after verification.")
 
     elif page_key == "Dashboard":
-        st.markdown("""<div class="page-header"><h1>📊 Analytics</h1><p>Platform performance overview</p></div>""", unsafe_allow_html=True)
-        st.write("Statistics and visual charts will be displayed here.")
+        st.markdown("""
+        <div class="page-header">
+            <h1>📊 Analytics Dashboard</h1>
+            <p>Platform performance and regional activity overview</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("""
+        <div class="metric-row">
+            <div class="metric-card">
+                <span class="metric-icon">🤝</span>
+                <div class="metric-value">430</div>
+                <div class="metric-label">Total Matches</div>
+                <div class="metric-delta">↑ +12 this week</div>
+            </div>
+            <div class="metric-card">
+                <span class="metric-icon">📦</span>
+                <div class="metric-value">87</div>
+                <div class="metric-label">Active Listings</div>
+                <div class="metric-delta">↑ +5 today</div>
+            </div>
+            <div class="metric-card">
+                <span class="metric-icon">👥</span>
+                <div class="metric-value">1,240</div>
+                <div class="metric-label">Registered Users</div>
+                <div class="metric-delta">↑ +34 this month</div>
+            </div>
+            <div class="metric-card">
+                <span class="metric-icon">⚠️</span>
+                <div class="metric-value">14</div>
+                <div class="metric-label">Near Expiry</div>
+                <div class="metric-delta" style="color:#dc2626">⚠ Needs attention</div>
+            </div>
+            <div class="metric-card">
+                <span class="metric-icon">⭐</span>
+                <div class="metric-value">9.4</div>
+                <div class="metric-label">Avg Trust Score</div>
+                <div class="metric-delta">↑ Excellent</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        tab_a, tab_b = st.tabs(["📈  Monthly Trends", "🗺️  Regional Breakdown"])
+
+        with tab_a:
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("*Monthly Matches — 2025*")
+                st.bar_chart({"Matches": [45, 60, 72, 58, 80, 95, 110, 102, 88, 120, 130, 125]}, use_container_width=True, height=260)
+            with c2:
+                st.markdown("*Items Listed per Month — 2025*")
+                st.bar_chart({"Items Listed": [30, 48, 55, 42, 67, 78, 92, 85, 70, 105, 112, 99]}, use_container_width=True, height=260)
+
+        with tab_b:
+            c3, c4 = st.columns(2)
+            with c3:
+                st.markdown("*Matches by Region*")
+                st.bar_chart({"Matches": [120, 95, 80, 65, 40]}, use_container_width=True, height=260)
+                st.caption("Selangor · KL · Penang · Johor · Others")
+            with c4:
+                st.markdown("*Users by Region*")
+                st.bar_chart({"Users": [420, 380, 210, 150, 80]}, use_container_width=True, height=260)
+                st.caption("Selangor · KL · Penang · Johor · Others")
+
+        st.markdown("---")
+        st.markdown("### ⏳ Items Approaching Expiry")
+        st.dataframe({
+            "Item":      ["Canned Goods Bundle", "Fresh Vegetables Pack", "Baby Formula Tins", "Bread Loaves"],
+            "Region":    ["Penang", "Selangor", "KL", "Johor"],
+            "Posted By": ["Ahmad Fauzi", "Nurul Ain", "Mei Lin", "Raj Kumar"],
+            "Days Left": [3, 5, 6, 2],
+            "Status":    ["🚨 Critical", "⚠️ Warning", "⚠️ Warning", "🚨 Critical"],
+        }, use_container_width=True, hide_index=True)
