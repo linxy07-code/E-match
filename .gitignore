@@ -1,0 +1,10 @@
+# Ignore the local database
+*.db
+
+# Ignore local images
+uploads/
+
+# Ignore Python cache and environment
+__pycache__/
+.venv/
+.streamlit/secrets.toml

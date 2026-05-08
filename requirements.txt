@@ -1,0 +1,6 @@
+streamlit
+psycopg2-binary
+bcrypt
+cloudinary
+Pillow
+streamlit-cookies-controller
