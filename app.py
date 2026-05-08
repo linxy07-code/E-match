@@ -126,6 +126,30 @@ div.stButton > button {
     background: linear-gradient(135deg, var(--green-600), var(--teal-600)) !important; color: white !important;
     border-radius: 9px !important; border: none !important;
 }
+            
+.mp-card {
+    background: #ffffff;
+    border-radius: var(--radius);
+    border: 1px solid var(--green-200);
+    box-shadow: var(--shadow-sm);
+    padding: 20px;
+    margin-bottom: 15px;
+}
+
+.mp-card-title {
+    font-family: 'Fraunces', serif !important;
+    font-size: 1.3rem !important; /* Balanced size */
+    font-weight: 600 !important;
+    color: var(--green-900) !important;
+    margin-bottom: 8px !important;
+    line-height: 1.2;
+}
+
+/* Adds the requested space under the claim button area */
+.claim-button-container {
+    margin-top: 18px; 
+    margin-bottom: 12px;
+}
 </style>
 """, unsafe_allow_html=True)
 
