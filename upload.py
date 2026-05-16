@@ -28,18 +28,15 @@ def save_uploaded_file(uploaded_file) -> str | None:
         return None
 
     try:
-        # ── CLOUD UPLOAD WITH AUTOMATIC RESIZING ──
-        # This tells Cloudinary: "Take the image and force it into a 500x500 square"
-        # This ensures all images in your marketplace look exactly the same size.
         upload_result = cloudinary.uploader.upload(
             uploaded_file,
             folder="ecomatch_uploads",
             transformation=[
                 {
-                    "width": 500, 
-                    "height": 500, 
-                    "crop": "pad",      # Changed 'fill' to 'pad'
-                    "background": "white", # Adds white bars to the sides if image is skinny
+                    "width": 500,
+                    "height": 500,
+                    "crop": "pad",
+                    "background": "white",
                     "gravity": "center"
                 }
             ]
@@ -49,6 +46,7 @@ def save_uploaded_file(uploaded_file) -> str | None:
     except Exception as e:
         st.error(f"❌ Cloud upload failed: {e}")
         return None
+
     
 def render_upload_page():
     if not st.session_state.get("logged_in"):
@@ -65,8 +63,7 @@ def render_upload_page():
     # MODE A: SUCCESS CHOICE (Only shows after a successful post)
     # ══════════════════════════════════════════════════════════════════════════
     if st.session_state.upload_success_mode:
-        # --- THE BALLOONS ARE HERE ---
-        st.balloons() 
+        st.balloons()
         
         st.markdown("""<div class="page-header"><h1>🎉 Item Successfully Listed!</h1></div>""", unsafe_allow_html=True)
         
@@ -75,18 +72,17 @@ def render_upload_page():
         col1, col2 = st.columns(2)
         with col1:
             if st.button("🛒 View in Marketplace", use_container_width=True):
-                # Reset the success mode
                 st.session_state.upload_success_mode = False 
-                # Set the target page
                 st.session_state.current_page = "🛒  Marketplace"
                 st.rerun()
         with col2:
             if st.button("➕ Upload Another Item", use_container_width=True):
-                # Clear the old form data so it's fresh
-                for key in ["upload_item_name", "upload_description", "upload_image_file"]:
-                    if key in st.session_state: del st.session_state[key]
+                for key in ["upload_item_name", "upload_description", "upload_image_file",
+                            "upload_listing_type", "upload_price"]:
+                    if key in st.session_state:
+                        del st.session_state[key]
                 
-                st.session_state.upload_success_mode = False # Back to the form
+                st.session_state.upload_success_mode = False
                 st.rerun()
         
         return # STOP HERE
@@ -100,12 +96,44 @@ def render_upload_page():
     with col_main:
         st.markdown("<div class='form-section'><p class='form-section-title'>📋 Item Details</p>", unsafe_allow_html=True)
         item_name = st.text_input("Item Name *", key="upload_item_name")
-        category = st.selectbox("Category *", ["Food", "Household", "Electronics", "Others"], key="upload_category")
-        region = st.selectbox("Pickup Region *", ["Selangor", "Kuala Lumpur", "Penang", "Johor"], key="upload_region")
+        category = st.selectbox("Category *", ["Groceries & Food", "Household", "Electronics", "Fashion & Apparel", "Lifestyle & Hobbies", "Others"], key="upload_category")
+        region = st.selectbox("Pickup Region *", ["Johor", "Kedah", "Kelantan", "Melaka", "Negeri Sembilan", "Pahang", "Perak", "Perlis", "Pulau Pinang", "Selangor", "Terengganu", "Sabah", "Sarawak"], key="upload_region")
         description = st.text_area("Description", key="upload_description")
-        
         has_expiry = st.checkbox("This item has an expiry date", key="upload_has_expiry")
         expiry_date = st.date_input("Expiry Date", key="upload_expiry_date") if has_expiry else None
+
+        # ── LISTING TYPE ──────────────────────────────────────────────────────
+        st.markdown("---")
+        st.markdown("<p class='form-section-title'>💰 Listing Type</p>", unsafe_allow_html=True)
+
+        LISTING_TYPE_OPTIONS = {
+            "🆓 Free of Charge": "free",
+            "🔄 Exchange / Swap": "exchange",
+            "💵 Sell": "sell",
+        }
+
+        listing_type_label = st.radio(
+            "How would you like to offer this item? *",
+            options=list(LISTING_TYPE_OPTIONS.keys()),
+            key="upload_listing_type_label",
+            horizontal=True,
+        )
+        listing_type = LISTING_TYPE_OPTIONS[listing_type_label]
+
+        # Show price field only when "Sell" is selected
+        price = None
+        if listing_type == "sell":
+            price = st.number_input(
+                "Your Price (RM) *",
+                min_value=0.01,
+                step=0.50,
+                format="%.2f",
+                key="upload_price",
+                help="Set the price in Malaysian Ringgit (RM).",
+            )
+        elif listing_type == "exchange":
+            st.info("💡 Describe what you're looking to exchange for in the Description field above.")
+
         st.markdown("</div>", unsafe_allow_html=True)
 
     with col_side:
@@ -118,18 +146,28 @@ def render_upload_page():
             st.error("Please provide both a name and an image.")
             return
 
+        # Validate price when listing type is "sell"
+        if listing_type == "sell" and (price is None or price <= 0):
+            st.error("Please enter a valid price for your item.")
+            return
+
         with st.spinner("Uploading..."):
             image_url = save_uploaded_file(uploaded_file)
     
         if image_url:
             expiry_str = expiry_date.strftime("%Y-%m-%d") if expiry_date else None
             result = db.add_item(
-                user_id=user_id, item_name=item_name, category=category,
-                region=region, expiry_date=expiry_str, image_path=image_url, 
-                description=description
+                user_id=user_id,
+                item_name=item_name,
+                category=category,
+                region=region,
+                expiry_date=expiry_str,
+                image_path=image_url,
+                description=description,
+                listing_type=listing_type,       # "free" | "exchange" | "sell"
+                price=price if listing_type == "sell" else None,
             )
         
             if result["success"]:
-                # Set the switch to True and rerun to trigger the balloons at the top
                 st.session_state.upload_success_mode = True
                 st.rerun()
