@@ -20,20 +20,22 @@ class EcoMatchDB:
                 # 1. Users
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS users (
-                        id               SERIAL PRIMARY KEY,
+                        id             SERIAL PRIMARY KEY,
                         username       TEXT NOT NULL UNIQUE,
                         password_hash  TEXT NOT NULL,
                         region         TEXT,
                         user_type      TEXT,
                         trust_score    REAL DEFAULT 10,
+                        status         TEXT DEFAULT 'Active',
                         created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
 
-                # Migrate old users table: add email / is_verified if missing
+                # Migrate old users table: add email / is_verified / status if missing
                 for col, definition in [
                     ("email", "TEXT"),
                     ("is_verified", "BOOLEAN DEFAULT FALSE"),
+                    ("status", "TEXT DEFAULT 'Active'"),
                 ]:
                     cursor.execute("""
                         SELECT column_name FROM information_schema.columns
@@ -56,20 +58,20 @@ class EcoMatchDB:
                 # 2. Items
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS items (
-                        id            SERIAL PRIMARY KEY,
-                        user_id       INTEGER NOT NULL REFERENCES users(id),
-                        item_name     TEXT NOT NULL,
-                        category      TEXT,
-                        region        TEXT,
-                        condition     TEXT DEFAULT 'Good',
-                        quantity      INTEGER DEFAULT 1,
-                        description   TEXT,
-                        expiry_date   TEXT,
-                        image_path    TEXT,
-                        listing_type  TEXT DEFAULT 'free',
-                        price         NUMERIC(10, 2),
-                        is_active     INTEGER DEFAULT 1,
-                        created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        id             SERIAL PRIMARY KEY,
+                        user_id        INTEGER NOT NULL REFERENCES users(id),
+                        item_name      TEXT NOT NULL,
+                        category       TEXT,
+                        region         TEXT,
+                        condition      TEXT DEFAULT 'Good',
+                        quantity       INTEGER DEFAULT 1,
+                        description    TEXT,
+                        expiry_date    TEXT,
+                        image_path     TEXT,
+                        listing_type   TEXT DEFAULT 'free',
+                        price          NUMERIC(10, 2),
+                        is_active      INTEGER DEFAULT 1,
+                        created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
 
@@ -119,6 +121,29 @@ class EcoMatchDB:
                     )
                 """)
 
+                # 5. Misconduct Reports
+                # ── UPDATED: Added trust_score snapshot tracking parameter inside CREATE table structure ──
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS reports (
+                        id           SERIAL PRIMARY KEY,
+                        reporter_id  INTEGER NOT NULL REFERENCES users(id),
+                        reported_id  INTEGER NOT NULL REFERENCES users(id),
+                        reason       TEXT NOT NULL,
+                        details      TEXT,
+                        is_reviewed  INTEGER DEFAULT 0,
+                        trust_score  REAL DEFAULT 10.0,
+                        created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
+                # ── AUTOMATED MIGRATION: Appends trust_score onto pre-existing local or cloud reports tables ──
+                cursor.execute("""
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_name = 'reports' AND column_name = 'trust_score'
+                """)
+                if not cursor.fetchone():
+                    cursor.execute("ALTER TABLE reports ADD COLUMN trust_score REAL DEFAULT 10.0")
+
                 conn.commit()
 
     # ── USER METHODS ──────────────────────────────────────────────────────────
@@ -132,8 +157,8 @@ class EcoMatchDB:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
-                        """INSERT INTO users (username, password_hash, region, user_type, email, is_verified)
-                           VALUES (%s, %s, %s, %s, %s, FALSE) RETURNING id""",
+                        """INSERT INTO users (username, password_hash, region, user_type, email, is_verified, status)
+                           VALUES (%s, %s, %s, %s, %s, FALSE, 'Active') RETURNING id""",
                         (username, password_hash, region, user_type, email.strip()),
                     )
                     user_id = cursor.fetchone()["id"]
@@ -143,12 +168,12 @@ class EcoMatchDB:
             return {"success": False, "error": str(e)}
 
     def verify_user(self, username, password):
-        """Validates login credentials and ensures email verification has passed."""
+        """Validates login credentials, ensures verification passed, and fetches system parameters."""
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
-                        """SELECT id, password_hash, user_type, region, trust_score, is_verified
+                        """SELECT id, password_hash, user_type, region, trust_score, status, is_verified
                            FROM users WHERE username = %s""",
                         (username,),
                     )
@@ -167,19 +192,34 @@ class EcoMatchDB:
                             "user_type":   row["user_type"],
                             "region":      row["region"],
                             "trust_score": row["trust_score"],
+                            "status":      row["status"],
                         }
                     return {"success": False, "error": "Invalid credentials"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
     def get_user_by_id(self, user_id):
-        """Used by cookie auto-login in app.py."""
+        """Used by safety engines and cookie auto-login parameters to pull live system metrics."""
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
-                        "SELECT id, username, region, user_type, trust_score, is_verified FROM users WHERE id = %s",
+                        "SELECT id, username, region, user_type, trust_score, status, is_verified FROM users WHERE id = %s",
                         (int(user_id),),
+                    )
+                    row = cursor.fetchone()
+                    return dict(row) if row else None
+        except Exception:
+            return None
+
+    def get_user_by_username(self, username):
+        """Fetches profile mapping parameters using a unique text string handle."""
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT id, username, region, user_type, trust_score, status FROM users WHERE username = %s",
+                        (username.strip(),),
                     )
                     row = cursor.fetchone()
                     return dict(row) if row else None
@@ -429,7 +469,6 @@ class EcoMatchDB:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    # ── NEW WORKFLOW ENGINE METHOD ──
     def update_claim_status(self, claim_id, status):
         """Allows owners to accept/reject request states ('accepted', 'rejected')"""
         try:
@@ -517,5 +556,39 @@ class EcoMatchDB:
                         float(cursor.fetchone()["avg"] or 0), 1
                     )
                     return {"success": True, **stats}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    # ── MISCONDUCT LOGGING METHOD ─────────────────────────────────────────────
+
+    def create_misconduct_report(self, report_payload):
+        """Inserts user misconduct report payloads straight into PostgreSQL 'reports' table."""
+        try:
+            # 1. Resolve the reported username string to its target profile record details
+            reported_user = self.get_user_by_username(report_payload["reported_username"])
+            if not reported_user:
+                return {"success": False, "error": f"User '{report_payload['reported_username']}' does not exist."}
+                
+            reported_id = reported_user["id"]
+            # Extract their live trust score to log alongside the report snapshot
+            reported_trust = float(reported_user.get("trust_score", 10.0))
+
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # ── UPDATED: Added trust_score mapping column execution parameter parameters ──
+                    cursor.execute("""
+                        INSERT INTO reports (reporter_id, reported_id, reason, details, is_reviewed, trust_score, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        report_payload["reporter_id"],
+                        reported_id,
+                        report_payload["reason"],
+                        report_payload["details"],
+                        0,  # Defaulting to 0 (Unreviewed int4 state)
+                        reported_trust,  # Logged live user standing snapshot parameter
+                        report_payload["created_at"]
+                    ))
+                    conn.commit()
+                    return {"success": True}
         except Exception as e:
             return {"success": False, "error": str(e)}

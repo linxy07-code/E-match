@@ -8,10 +8,13 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # 2. Now Python can easily find and resolve your mailer file
 from mailer import send_verification_otp
 
-from datetime import datetime
-from database import EcoMatchDB
+# 3. Import modular pages and elements
+from trust_safety import render_trust_safety_page # <-- Clean modular injection
 from upload import render_upload_page
 from marketplace import render_marketplace_page
+
+from datetime import datetime
+from database import EcoMatchDB
 import time
 from streamlit_cookies_controller import CookieController
 
@@ -357,6 +360,28 @@ else:
     # ── LOGGED-IN PAGES ───────────────────────────────────────────────────────
     user_id = st.session_state.get("user_id")
 
+    # ── SECURITY GATEKEEPER: ENFORCE MANUAL BAN STATUS ────────────────────────
+    # Checks if account column contains 'Banned' in database context
+    user_status_data = db.get_user_by_id(user_id)
+    if user_status_data and user_status_data.get("status") == "Banned":
+        st.markdown("""
+        <div style="background-color:#fee2e2; border:1px solid #fca5a5; padding:30px; border-radius:14px; margin-top:50px; text-align:center;">
+            <h1 style="color:#dc2626; font-family:sans-serif; margin:0 0 10px 0;">❌ Access Denied</h1>
+            <p style="color:#991b1b; margin:0 0 20px 0; font-size:1rem;">
+                Your account has been permanently <strong>Banned</strong> by an administrator due to violations of our community guidelines.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("🚪 Leave Platform", use_container_width=True):
+            if "ematch_user" in controller.getAll():
+                try: controller.remove("ematch_user")
+                except KeyError: pass
+            st.session_state.clear()
+            st.rerun()
+            
+        st.stop() # Total application execution execution block halt
+
     # ── Marketplace ───────────────────────────────────────────────────────────
     if page_key == "Marketplace":
         render_marketplace_page()
@@ -480,66 +505,8 @@ else:
 
     # ── Trust & Safety ────────────────────────────────────────────────────────
     elif page_key == "Trust & Safety":
-        st.markdown("""
-        <div class="page-header">
-            <h1>🛡️ Trust & Safety</h1>
-            <p>Your reputation is your currency on E-match</p>
-        </div>""", unsafe_allow_html=True)
-
-        trust_score = st.session_state.get("trust_score", 10)
-        trust_pct   = int((trust_score / 10) * 100)
-        col_score, col_rules = st.columns([1, 2])
-
-        with col_score:
-            standing = ("Excellent Standing" if trust_score >= 8
-                        else "Good Standing" if trust_score >= 5
-                        else "Needs Improvement")
-            st.markdown(f"""
-            <div class="trust-ring-wrap">
-                <span style="font-size:2rem">⭐</span>
-                <div style="margin-top:12px;text-align:center">
-                    <span class="trust-score-num">{trust_score}</span>
-                    <span class="trust-score-denom"> / 10</span>
-                </div>
-                <div class="trust-label">{standing}</div>
-                <div class="trust-bar-bg" style="margin-top:14px">
-                    <div class="trust-bar-fill" style="width:{trust_pct}%"></div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-        with col_rules:
-            st.markdown("<div class='card'><p style='font-weight:700;border-bottom:1px solid #dcfce7;padding-bottom:10px'>📋 Score Rules</p>", unsafe_allow_html=True)
-            rules = [
-                ("Successful match completed",       "+1.0", True),
-                ("Item listed with accurate info",   "+0.5", True),
-                ("Uploaded a clear item photo",      "+0.5", True),
-                ("Fast response to claim request",   "+0.5", True),
-                ("Misconduct reported & verified",   "−3.0", False),
-                ("Listing an expired item",          "−1.0", False),
-                ("No-show for agreed pickup",        "−2.0", False),
-            ]
-            for rule, impact, pos in rules:
-                cls = "rule-impact-pos" if pos else "rule-impact-neg"
-                st.markdown(f"""
-                <div class="rule-row">
-                    <span style="font-size:.875rem;color:#404040">{rule}</span>
-                    <span class="{cls}">{impact}</span>
-                </div>""", unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        st.markdown("---")
-        st.markdown("### 🚨 Report Misconduct")
-        r1, r2 = st.columns(2)
-        with r1:
-            st.text_input("Username to report", placeholder="Enter their username")
-        with r2:
-            st.selectbox("Reason", ["Misleading listing", "No-show for pickup",
-                                     "Inappropriate behaviour", "Fraudulent activity", "Other"])
-        st.text_area("Additional details (optional)",
-                     placeholder="Describe what happened…", height=90)
-        if st.button("Submit Report", key="btn_report"):
-            st.error("⚠️ Report submitted. Our team will review and adjust trust scores after verification.")
+        # Calls the dedicated modularized build structure
+        render_trust_safety_page(db, user_id)
 
     # ── Dashboard ─────────────────────────────────────────────────────────────
     elif page_key == "Dashboard":
