@@ -6,7 +6,8 @@ import streamlit as st
 
 class EcoMatchDB:
     def __init__(self):
-        self.db_url = st.secrets["DB_URL"]
+        # ── FIXED: Updated to match your exact nested secrets.toml format ──
+        self.db_url = st.secrets["database"]["connection_string"]
         self._init_db()
 
     def _get_connection(self):
@@ -19,13 +20,36 @@ class EcoMatchDB:
                 # 1. Users
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS users (
-                        id             SERIAL PRIMARY KEY,
+                        id               SERIAL PRIMARY KEY,
                         username       TEXT NOT NULL UNIQUE,
                         password_hash  TEXT NOT NULL,
                         region         TEXT,
                         user_type      TEXT,
                         trust_score    REAL DEFAULT 10,
                         created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
+                # Migrate old users table: add email / is_verified if missing
+                for col, definition in [
+                    ("email", "TEXT"),
+                    ("is_verified", "BOOLEAN DEFAULT FALSE"),
+                ]:
+                    cursor.execute("""
+                        SELECT column_name FROM information_schema.columns
+                        WHERE table_name = 'users' AND column_name = %s
+                    """, (col,))
+                    if not cursor.fetchone():
+                        cursor.execute(
+                            f"ALTER TABLE users ADD COLUMN {col} {definition}"
+                        )
+
+                # Email Verification tracking table (PostgreSQL layout)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS email_verification (
+                        user_id     INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                        otp_code    TEXT NOT NULL,
+                        expires_at  TIMESTAMP NOT NULL
                     )
                 """)
 
@@ -83,7 +107,7 @@ class EcoMatchDB:
                 if not cursor.fetchone():
                     cursor.execute("ALTER TABLE claims ADD COLUMN message TEXT")
 
-                # 4. Notifications  ← NEW
+                # 4. Notifications
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS notifications (
                         id          SERIAL PRIMARY KEY,
@@ -99,7 +123,8 @@ class EcoMatchDB:
 
     # ── USER METHODS ──────────────────────────────────────────────────────────
 
-    def add_user(self, username, password, region, user_type):
+    def add_user(self, username, password, region, user_type, email):
+        """Creates a new user record setting verification state to pending."""
         password_hash = bcrypt.hashpw(
             password.encode("utf-8"), bcrypt.gensalt()
         ).decode("utf-8")
@@ -107,9 +132,9 @@ class EcoMatchDB:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
-                        """INSERT INTO users (username, password_hash, region, user_type)
-                           VALUES (%s, %s, %s, %s) RETURNING id""",
-                        (username, password_hash, region, user_type),
+                        """INSERT INTO users (username, password_hash, region, user_type, email, is_verified)
+                           VALUES (%s, %s, %s, %s, %s, FALSE) RETURNING id""",
+                        (username, password_hash, region, user_type, email.strip()),
                     )
                     user_id = cursor.fetchone()["id"]
                     conn.commit()
@@ -118,11 +143,12 @@ class EcoMatchDB:
             return {"success": False, "error": str(e)}
 
     def verify_user(self, username, password):
+        """Validates login credentials and ensures email verification has passed."""
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
-                        """SELECT id, password_hash, user_type, region, trust_score
+                        """SELECT id, password_hash, user_type, region, trust_score, is_verified
                            FROM users WHERE username = %s""",
                         (username,),
                     )
@@ -131,6 +157,10 @@ class EcoMatchDB:
                         password.encode("utf-8"),
                         row["password_hash"].encode("utf-8"),
                     ):
+                        # Block access if account email verification is incomplete
+                        if not row["is_verified"]:
+                            return {"success": False, "error": "unverified", "user_id": row["id"]}
+                        
                         return {
                             "success":     True,
                             "user_id":     row["id"],
@@ -148,13 +178,63 @@ class EcoMatchDB:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
-                        "SELECT id, username, region, user_type, trust_score FROM users WHERE id = %s",
+                        "SELECT id, username, region, user_type, trust_score, is_verified FROM users WHERE id = %s",
                         (int(user_id),),
                     )
                     row = cursor.fetchone()
                     return dict(row) if row else None
         except Exception:
             return None
+
+    # ── EMAIL VERIFICATION ENGINE METHODS ────────────────────────────────────
+
+    def save_verification_code(self, user_id, otp_code, expiry_minutes=15):
+        """Saves or updates an upscale verification code tied to a user profile."""
+        import datetime
+        expires_at = datetime.datetime.now() + datetime.timedelta(minutes=expiry_minutes)
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # PostgreSQL UPSERT construct handling duplicate registration hits
+                    cursor.execute("""
+                        INSERT INTO email_verification (user_id, otp_code, expires_at)
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT (user_id) 
+                        DO UPDATE SET otp_code = EXCLUDED.otp_code, expires_at = EXCLUDED.expires_at
+                    """, (user_id, otp_code, expires_at))
+                    conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def check_verification_code(self, user_id, user_entered_code):
+        """Validates temporary verification credentials and upgrades user profile active tier."""
+        import datetime
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT otp_code, expires_at FROM email_verification WHERE user_id = %s
+                    """, (user_id,))
+                    row = cursor.fetchone()
+                    
+                    if not row:
+                        return {"success": False, "error": "No validation session found for this profile."}
+                    
+                    if row["otp_code"] != user_entered_code.strip():
+                        return {"success": False, "error": "Invalid verification token."}
+                        
+                    if datetime.datetime.now() > row["expires_at"]:
+                        return {"success": False, "error": "Code timeout expired. Please request a new token."}
+                    
+                    # Upgrade registration metrics
+                    cursor.execute("UPDATE users SET is_verified = TRUE WHERE id = %s", (user_id,))
+                    cursor.execute("DELETE FROM email_verification WHERE user_id = %s", (user_id,))
+                    conn.commit()
+                    
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
     # ── ITEM METHODS ──────────────────────────────────────────────────────────
 
@@ -191,10 +271,6 @@ class EcoMatchDB:
             return {"success": False, "error": str(e)}
 
     def get_all_items(self, category=None, search=None):
-        """
-        Returns ALL columns from items plus seller username and trust score.
-        Explicitly lists every column so nothing is missed.
-        """
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -234,9 +310,6 @@ class EcoMatchDB:
             return {"success": False, "error": str(e)}
 
     def get_user_items(self, user_id):
-        """
-        Returns ALL columns for the logged-in user's own listings.
-        """
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -281,10 +354,6 @@ class EcoMatchDB:
     # ── CLAIM METHODS ─────────────────────────────────────────────────────────
 
     def add_claim(self, item_id, claimer_id, message=""):
-        """
-        Insert a claim and automatically send a notification to the item owner.
-        Prevents duplicate pending claims from the same buyer.
-        """
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -357,6 +426,21 @@ class EcoMatchDB:
                         ORDER BY c.created_at DESC
                     """, (item_id,))
                     return {"success": True, "claims": cursor.fetchall()}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    # ── NEW WORKFLOW ENGINE METHOD ──
+    def update_claim_status(self, claim_id, status):
+        """Allows owners to accept/reject request states ('accepted', 'rejected')"""
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE claims SET status = %s WHERE id = %s",
+                        (status, claim_id)
+                    )
+                    conn.commit()
+                    return {"success": True}
         except Exception as e:
             return {"success": False, "error": str(e)}
 

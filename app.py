@@ -1,4 +1,13 @@
+import sys
+import os
 import streamlit as st
+
+# 1. This tells Python to look inside the exact folder where app.py lives
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# 2. Now Python can easily find and resolve your mailer file
+from mailer import send_verification_otp
+
 from datetime import datetime
 from database import EcoMatchDB
 from upload import render_upload_page
@@ -211,19 +220,62 @@ with st.sidebar:
 
         st.markdown("---")
         if st.button("🚪 Logout", use_container_width=True):
-            controller.remove("ematch_user")
+            if "ematch_user" in controller.getAll():
+                try:
+                    controller.remove("ematch_user")
+                except KeyError:
+                    pass
+            
             st.session_state.clear()
             st.rerun()
 
 
 # ── MAIN ROUTER ───────────────────────────────────────────────────────────────
 page_key = st.session_state.current_page.strip().split("  ", 1)[-1]
-# strip notification count from page_key e.g. "Notifications (3)"
 if page_key.startswith("🔔"):
     page_key = "Notifications"
 
 if not st.session_state.logged_in:
-    # ── AUTH ──────────────────────────────────────────────────────────────────
+    # ── INTERCEPT VIEW: ACTIVE OTP VERIFICATION ENGINE ────────────────────────
+    if "pending_verification_user_id" in st.session_state:
+        st.markdown(
+            '<div class="page-header"><h1>🌿 Complete Your Verification</h1>'
+            "<p>Security verification for safe resource sharing in Malaysia</p></div>",
+            unsafe_allow_html=True,
+        )
+        _, center, _ = st.columns([1, 2, 1])
+        with center:
+            st.markdown(f"""
+            <div class="card">
+                <h3>Enter OTP Code</h3>
+                <p style="color:#737373;font-size:.85rem">
+                    Hi <strong>{st.session_state['pending_username']}</strong>, we have dispatched a 6-digit security code to your email.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            entered_code = st.text_input("6-Digit Code", max_chars=6, key="otp_input")
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("Verify Account →", use_container_width=True, type="primary"):
+                    verify_res = db.check_verification_code(st.session_state["pending_verification_user_id"], entered_code)
+                    if verify_res["success"]:
+                        st.success("🎉 Account verified successfully! You can now log in.")
+                        del st.session_state["pending_verification_user_id"]
+                        del st.session_state["pending_username"]
+                        st.session_state.auth_tab = "login"
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Verification Failed: {verify_res['error']}")
+            with c2:
+                if st.button("Cancel & Back", use_container_width=True):
+                    del st.session_state["pending_verification_user_id"]
+                    del st.session_state["pending_username"]
+                    st.rerun()
+        st.stop()
+
+    # ── AUTH LAYOUT ───────────────────────────────────────────────────────────
     st.markdown(
         '<div class="page-header"><h1>Welcome to E-match</h1>'
         "<p>Malaysia's trusted platform for community resource sharing</p></div>",
@@ -255,6 +307,13 @@ if not st.session_state.logged_in:
                     if remember:
                         controller.set("ematch_user", res["user_id"])
                     st.rerun()
+                # UNVERIFIED SECURITY EXCEPTION INTERCEPT
+                elif res.get("error") == "unverified":
+                    st.session_state["pending_verification_user_id"] = res["user_id"]
+                    st.session_state["pending_username"] = l_user.strip()
+                    st.warning("⚠️ Your account email is unverified. Redirecting to verification panel...")
+                    time.sleep(1.5)
+                    st.rerun()
                 else:
                     st.error(f"❌ {res['error']}")
         else:
@@ -263,15 +322,36 @@ if not st.session_state.logged_in:
             r_email = st.text_input("Email",    key="r_email")
             r_pass  = st.text_input("Password", type="password", key="r_pass")
             r_reg   = st.selectbox("Region", ["Selangor", "Kuala Lumpur", "Penang", "Johor",
-                                               "Melaka", "Sabah", "Sarawak"])
+                                              "Melaka", "Sabah", "Sarawak"])
             if st.button("Create My Account →", use_container_width=True):
-                res = db.add_user(r_user, r_pass, r_reg, "Personal")
-                if res["success"]:
-                    st.success("Account created! Please sign in.")
-                    st.session_state.auth_tab = "login"
-                    st.rerun()
+                if not r_user or not r_email or not r_pass:
+                    st.error("❌ Please fill in all fields.")
+                elif "@" not in r_email or "." not in r_email:
+                    st.error("❌ Please enter a valid email address.")
                 else:
-                    st.error(f"❌ {res.get('error')}")
+                    # 1. Save user to database (defaults to is_verified = False)
+                    res = db.add_user(r_user.strip(), r_pass, r_reg, "Personal", r_email.strip())
+                    if res["success"]:
+                        user_id = res["user_id"]
+                        
+                        # 2. Dispatch the automated email OTP
+                        with st.spinner("Dispatching authorization code to your email..."):
+                            mail_res = send_verification_otp(r_email.strip())
+                        
+                        if mail_res["success"]:
+                            # 3. Store token reference in database verification table
+                            db.save_verification_code(user_id, mail_res["otp"])
+                            
+                            # 4. Set routing targets to load the verification view
+                            st.session_state["pending_verification_user_id"] = user_id
+                            st.session_state["pending_username"] = r_user.strip()
+                            st.success("📩 Account initialization successful! Please check your email inbox.")
+                            time.sleep(1.0)
+                            st.rerun()
+                        else:
+                            st.error(f"❌ SMTP dispatch error: {mail_res['error']}")
+                    else:
+                        st.error(f"❌ {res.get('error')}")
 
 else:
     # ── LOGGED-IN PAGES ───────────────────────────────────────────────────────
@@ -336,7 +416,6 @@ else:
                     st.markdown(f"""
 <div class="my-item-card">
     <p class="my-item-title">{item['item_name']} {badge}</p>
-
     <div class="my-item-row">🏷️ <strong>Category:</strong> {item.get('category','—')}</div>
     <div class="my-item-row">📍 <strong>Region:</strong> {item.get('region','—')}</div>
     <div class="my-item-row">🔍 <strong>Condition:</strong> {item.get('condition','—')}</div>
@@ -382,7 +461,6 @@ else:
                 card_class = "notif-item unread" if is_unread else "notif-item"
                 dot        = "🟢 " if is_unread else ""
 
-                # Format timestamp
                 created = n.get("created_at")
                 if created:
                     try:
