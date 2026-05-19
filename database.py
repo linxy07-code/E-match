@@ -2,11 +2,11 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import bcrypt
 import streamlit as st
-
+import datetime
 
 class EcoMatchDB:
     def __init__(self):
-        # ── FIXED: Updated to match your exact nested secrets.toml format ──
+        # Initializes database configuration using Streamlit secrets
         self.db_url = st.secrets["database"]["connection_string"]
         self._init_db()
 
@@ -17,7 +17,7 @@ class EcoMatchDB:
         with self._get_connection() as conn:
             with conn.cursor() as cursor:
 
-                # 1. Users
+                # 1. Users Table Structure
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS users (
                         id             SERIAL PRIMARY KEY,
@@ -31,7 +31,7 @@ class EcoMatchDB:
                     )
                 """)
 
-                # Migrate old users table: add email / is_verified / status if missing
+                # Automated Schema Migration for older User variants
                 for col, definition in [
                     ("email", "TEXT"),
                     ("is_verified", "BOOLEAN DEFAULT FALSE"),
@@ -46,7 +46,7 @@ class EcoMatchDB:
                             f"ALTER TABLE users ADD COLUMN {col} {definition}"
                         )
 
-                # Email Verification tracking table (PostgreSQL layout)
+                # Email Verification Tracking Matrix
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS email_verification (
                         user_id     INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -55,7 +55,7 @@ class EcoMatchDB:
                     )
                 """)
 
-                # 2. Items
+                # 2. Marketplace Items Table
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS items (
                         id             SERIAL PRIMARY KEY,
@@ -75,7 +75,7 @@ class EcoMatchDB:
                     )
                 """)
 
-                # Migrate old items table: add listing_type / price if missing
+                # Automated Schema Migration for older Item variants
                 for col, definition in [
                     ("listing_type", "TEXT DEFAULT 'free'"),
                     ("price",        "NUMERIC(10, 2)"),
@@ -89,7 +89,7 @@ class EcoMatchDB:
                             f"ALTER TABLE items ADD COLUMN {col} {definition}"
                         )
 
-                # 3. Claims
+                # 3. Transaction Claims Table
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS claims (
                         id          SERIAL PRIMARY KEY,
@@ -101,7 +101,7 @@ class EcoMatchDB:
                     )
                 """)
 
-                # Migrate old claims table: add message if missing
+                # Automated Schema Migration for old claims matrix
                 cursor.execute("""
                     SELECT column_name FROM information_schema.columns
                     WHERE table_name = 'claims' AND column_name = 'message'
@@ -109,7 +109,7 @@ class EcoMatchDB:
                 if not cursor.fetchone():
                     cursor.execute("ALTER TABLE claims ADD COLUMN message TEXT")
 
-                # 4. Notifications
+                # 4. User System Notifications Table
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS notifications (
                         id          SERIAL PRIMARY KEY,
@@ -121,8 +121,7 @@ class EcoMatchDB:
                     )
                 """)
 
-                # 5. Misconduct Reports
-                # ── UPDATED: Added trust_score snapshot tracking parameter inside CREATE table structure ──
+                # 5. Misconduct Engine Reports Table
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS reports (
                         id           SERIAL PRIMARY KEY,
@@ -136,7 +135,7 @@ class EcoMatchDB:
                     )
                 """)
 
-                # ── AUTOMATED MIGRATION: Appends trust_score onto pre-existing local or cloud reports tables ──
+                # Automated Migration mapping trust score evaluations
                 cursor.execute("""
                     SELECT column_name FROM information_schema.columns
                     WHERE table_name = 'reports' AND column_name = 'trust_score'
@@ -146,7 +145,7 @@ class EcoMatchDB:
 
                 conn.commit()
 
-    # ── USER METHODS ──────────────────────────────────────────────────────────
+    # ── USER IDENTITY MANAGEMENT METHODS ───────────────────────────────────────
 
     def add_user(self, username, password, region, user_type, email):
         """Creates a new user record setting verification state to pending."""
@@ -229,13 +228,12 @@ class EcoMatchDB:
     # ── EMAIL VERIFICATION ENGINE METHODS ────────────────────────────────────
 
     def save_verification_code(self, user_id, otp_code, expiry_minutes=15):
-        """Saves or updates an upscale verification code tied to a user profile."""
-        import datetime
+        """Saves or updates a rolling verification code tied to a user account profile."""
         expires_at = datetime.datetime.now() + datetime.timedelta(minutes=expiry_minutes)
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-                    # PostgreSQL UPSERT construct handling duplicate registration hits
+                    # PostgreSQL UPSERT handling duplicate registration attempts cleanly
                     cursor.execute("""
                         INSERT INTO email_verification (user_id, otp_code, expires_at)
                         VALUES (%s, %s, %s)
@@ -248,8 +246,7 @@ class EcoMatchDB:
             return {"success": False, "error": str(e)}
 
     def check_verification_code(self, user_id, user_entered_code):
-        """Validates temporary verification credentials and upgrades user profile active tier."""
-        import datetime
+        """Validates temporary verification credentials and elevates user profile registration parameters."""
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -267,7 +264,7 @@ class EcoMatchDB:
                     if datetime.datetime.now() > row["expires_at"]:
                         return {"success": False, "error": "Code timeout expired. Please request a new token."}
                     
-                    # Upgrade registration metrics
+                    # Core Atomic Status Escalation Workflow
                     cursor.execute("UPDATE users SET is_verified = TRUE WHERE id = %s", (user_id,))
                     cursor.execute("DELETE FROM email_verification WHERE user_id = %s", (user_id,))
                     conn.commit()
@@ -276,7 +273,7 @@ class EcoMatchDB:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    # ── ITEM METHODS ──────────────────────────────────────────────────────────
+    # ── MARKETPLACE PRODUCT METRICS METHODS ───────────────────────────────────
 
     def add_item(
         self,
@@ -391,14 +388,14 @@ class EcoMatchDB:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    # ── CLAIM METHODS ─────────────────────────────────────────────────────────
+    # ── TRANSACTION CLAIM MATRICES METHODS ────────────────────────────────────
 
     def add_claim(self, item_id, claimer_id, message=""):
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
 
-                    # Block duplicate pending claims
+                    # Block duplicate active pending claims
                     cursor.execute("""
                         SELECT id FROM claims
                         WHERE item_id = %s AND claimer_id = %s AND status = 'pending'
@@ -406,14 +403,14 @@ class EcoMatchDB:
                     if cursor.fetchone():
                         return {"success": False, "error": "duplicate"}
 
-                    # Insert claim
+                    # Save system claim record
                     cursor.execute("""
                         INSERT INTO claims (item_id, claimer_id, message)
                         VALUES (%s, %s, %s) RETURNING id
                     """, (item_id, claimer_id, message))
                     claim_id = cursor.fetchone()["id"]
 
-                    # Fetch item + claimer details for the notification
+                    # Fetch product details alongside applicant information context
                     cursor.execute("""
                         SELECT
                             i.item_name,
@@ -434,13 +431,8 @@ class EcoMatchDB:
                             "exchange" if lt == "exchange" else
                             "claim"
                         )
-                        title = (
-                            f"New {action} request on '{info['item_name']}'"
-                        )
-                        body = (
-                            f"👤 {info['claimer_name']} wants to {action} "
-                            f"your item '{info['item_name']}'."
-                        )
+                        title = f"New {action} request on '{info['item_name']}'"
+                        body = f"👤 {info['claimer_name']} wants to {action} your item '{info['item_name']}'."
                         if message:
                             body += f'\n💬 "{message}"'
 
@@ -470,7 +462,6 @@ class EcoMatchDB:
             return {"success": False, "error": str(e)}
 
     def update_claim_status(self, claim_id, status):
-        """Allows owners to accept/reject request states ('accepted', 'rejected')"""
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -525,7 +516,7 @@ class EcoMatchDB:
         except Exception:
             return 0
 
-    # ── TRUST & STATS ─────────────────────────────────────────────────────────
+    # ── TRUST MATRIX & ANALYTICS METHODS ──────────────────────────────────────
 
     def update_trust_score(self, user_id, delta):
         try:
@@ -564,18 +555,15 @@ class EcoMatchDB:
     def create_misconduct_report(self, report_payload):
         """Inserts user misconduct report payloads straight into PostgreSQL 'reports' table."""
         try:
-            # 1. Resolve the reported username string to its target profile record details
             reported_user = self.get_user_by_username(report_payload["reported_username"])
             if not reported_user:
                 return {"success": False, "error": f"User '{report_payload['reported_username']}' does not exist."}
                 
             reported_id = reported_user["id"]
-            # Extract their live trust score to log alongside the report snapshot
             reported_trust = float(reported_user.get("trust_score", 10.0))
 
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-                    # ── UPDATED: Added trust_score mapping column execution parameter parameters ──
                     cursor.execute("""
                         INSERT INTO reports (reporter_id, reported_id, reason, details, is_reviewed, trust_score, created_at)
                         VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -584,8 +572,8 @@ class EcoMatchDB:
                         reported_id,
                         report_payload["reason"],
                         report_payload["details"],
-                        0,  # Defaulting to 0 (Unreviewed int4 state)
-                        reported_trust,  # Logged live user standing snapshot parameter
+                        0,  # Default unreviewed snapshot parameter
+                        reported_trust,
                         report_payload["created_at"]
                     ))
                     conn.commit()

@@ -4,9 +4,9 @@ from email.mime.text import MIMEText
 
 def test_send():
     # 1. ── CONFIGURATION ──────────────────────────────────────────────────────
-    SENDER_EMAIL = "berniss2007@gmail.com"
-    SENDER_APP_PASSWORD = "myzsqxcmtmhvbhzc"  # Spaces completely removed
-    RECEIVER_EMAIL = "berniss2007@gmail.com"
+    SENDER_EMAIL = "ematch888@gmail.com"
+    SENDER_APP_PASSWORD = "cepipfdxyiyleeno"  # Spaces completely removed
+    RECEIVER_EMAIL = "ematch888@gmail.com"
     
     # Generate a dummy 6-digit verification code
     mock_otp = str(random.randint(100000, 999999))
