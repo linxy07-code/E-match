@@ -580,3 +580,111 @@ class EcoMatchDB:
                     return {"success": True}
         except Exception as e:
             return {"success": False, "error": str(e)}
+        
+     # ── DASHBOARD ANALYTICS METHODS ───────────────────────────────
+
+    def get_monthly_matches(self):
+
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+
+                    cursor.execute("""
+                        SELECT
+                            TO_CHAR(created_at, 'YYYY-MM') AS month,
+                            COUNT(*) AS matches
+                        FROM claims
+                        GROUP BY month
+                        ORDER BY month
+                    """)
+
+                    return cursor.fetchall()
+
+        except Exception:
+            return []
+
+
+    def get_monthly_items(self):
+
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+
+                    cursor.execute("""
+                        SELECT
+                            TO_CHAR(created_at, 'YYYY-MM') AS month,
+                            COUNT(*) AS items
+                        FROM items
+                        GROUP BY month
+                        ORDER BY month
+                    """)
+
+                    return cursor.fetchall()
+
+        except Exception:
+            return []
+
+
+    def get_matches_by_region(self):
+
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+
+                    cursor.execute("""
+                        SELECT
+                            region,
+                            COUNT(*) AS matches
+                        FROM items
+                        GROUP BY region
+                        ORDER BY matches DESC
+                    """)
+
+                    return cursor.fetchall()
+
+        except Exception:
+            return []
+
+
+    def get_users_by_region(self):
+
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+
+                    cursor.execute("""
+                        SELECT
+                            region,
+                            COUNT(*) AS users
+                        FROM users
+                        GROUP BY region
+                        ORDER BY users DESC
+                    """)
+
+                    return cursor.fetchall()
+
+        except Exception:
+            return []      
+
+    def get_expiring_items(self):
+
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+
+                    cursor.execute("""
+                        SELECT
+                            item_name,
+                            category,
+                            region,
+                            expiry_date
+                        FROM items
+                        WHERE expiry_date IS NOT NULL
+                        ORDER BY expiry_date ASC
+                        LIMIT 10
+                    """)
+
+                    return cursor.fetchall()
+
+        except Exception:
+            return []

@@ -1,6 +1,8 @@
 import sys
 import os
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
+import pandas as pd
 
 # 1. This tells Python to look inside the exact folder where app.py lives
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -463,6 +465,7 @@ else:
 
     # ── Notifications ─────────────────────────────────────────────────────────
     elif page_key == "Notifications":
+
         st.markdown(
             '<div class="page-header"><h1>🔔 Notifications</h1>'
             "<p>Requests and updates from the community</p></div>",
@@ -470,23 +473,28 @@ else:
         )
 
         notif_res = db.get_notifications(user_id)
-        notifs    = notif_res.get("notifications", [])
+        notifs = notif_res.get("notifications", [])
 
         if not notifs:
             st.info("No notifications yet. When someone requests your item, you'll see it here.")
+
         else:
             col_hdr, col_btn = st.columns([3, 1])
+
             col_hdr.caption(f"{len(notifs)} notification(s)")
+
             if col_btn.button("✅ Mark all as read", use_container_width=True):
                 db.mark_notifications_read(user_id)
                 st.rerun()
 
             for n in notifs:
-                is_unread  = not n.get("is_read", True)
+
+                is_unread = not n.get("is_read", True)
                 card_class = "notif-item unread" if is_unread else "notif-item"
-                dot        = "🟢 " if is_unread else ""
+                dot = "🟢 " if is_unread else ""
 
                 created = n.get("created_at")
+
                 if created:
                     try:
                         ts = created.strftime("%d %b %Y, %I:%M %p")
@@ -505,53 +513,148 @@ else:
 
     # ── Trust & Safety ────────────────────────────────────────────────────────
     elif page_key == "Trust & Safety":
-        # Calls the dedicated modularized build structure
+
         render_trust_safety_page(db, user_id)
 
-    # ── Dashboard ─────────────────────────────────────────────────────────────
+ # ── Dashboard ─────────────────────────────────────────────────────────
     elif page_key == "Dashboard":
+
         st.markdown("""
         <div class="page-header">
             <h1>📊 Analytics Dashboard</h1>
-            <p>Platform performance and regional activity overview</p>
-        </div>""", unsafe_allow_html=True)
-
-        st.markdown("""
-        <div class="metric-row">
-            <div class="metric-card"><div class="metric-value">430</div><div class="metric-label">Total Matches</div><div class="metric-delta">↑ +12 this week</div></div>
-            <div class="metric-card"><div class="metric-value">87</div><div class="metric-label">Active Listings</div><div class="metric-delta">↑ +5 today</div></div>
-            <div class="metric-card"><div class="metric-value">1,240</div><div class="metric-label">Registered Users</div><div class="metric-delta">↑ +34 this month</div></div>
-            <div class="metric-card"><div class="metric-value">14</div><div class="metric-label">Near Expiry</div><div class="metric-delta" style="color:#dc2626">⚠ Needs attention</div></div>
-            <div class="metric-card"><div class="metric-value">9.4</div><div class="metric-label">Avg Trust Score</div><div class="metric-delta">↑ Excellent</div></div>
+            <p>Live platform analytics overview</p>
         </div>
         """, unsafe_allow_html=True)
 
-        tab_a, tab_b = st.tabs(["📈  Monthly Trends", "🗺️  Regional Breakdown"])
-        with tab_a:
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("*Monthly Matches — 2025*")
-                st.bar_chart({"Matches": [45,60,72,58,80,95,110,102,88,120,130,125]}, height=260)
-            with c2:
-                st.markdown("*Items Listed per Month — 2025*")
-                st.bar_chart({"Items Listed": [30,48,55,42,67,78,92,85,70,105,112,99]}, height=260)
-        with tab_b:
-            c3, c4 = st.columns(2)
-            with c3:
-                st.markdown("*Matches by Region*")
-                st.bar_chart({"Matches": [120,95,80,65,40]}, height=260)
-                st.caption("Selangor · KL · Penang · Johor · Others")
-            with c4:
-                st.markdown("*Users by Region*")
-                st.bar_chart({"Users": [420,380,210,150,80]}, height=260)
-                st.caption("Selangor · KL · Penang · Johor · Others")
+        # ── TOP METRICS ─────────────────────────────────────────────
+        stats = db.get_platform_stats()
 
-        st.markdown("---")
-        st.markdown("### ⏳ Items Approaching Expiry")
-        st.dataframe({
-            "Item":      ["Canned Goods Bundle","Fresh Vegetables Pack","Baby Formula Tins","Bread Loaves"],
-            "Region":    ["Penang","Selangor","KL","Johor"],
-            "Posted By": ["Ahmad Fauzi","Nurul Ain","Mei Lin","Raj Kumar"],
-            "Days Left": [3, 5, 6, 2],
-            "Status":    ["🚨 Critical","⚠️ Warning","⚠️ Warning","🚨 Critical"],
-        }, use_container_width=True, hide_index=True)
+        total_users = stats.get("total_users", 0)
+        active_listings = stats.get("active_listings", 0)
+        avg_trust = stats.get("avg_trust_score", 0)
+
+        st.markdown(f"""
+        <div class="metric-row">
+
+            <div class="metric-card">
+                <div class="metric-value">{total_users}</div>
+                <div class="metric-label">Registered Users</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-value">{active_listings}</div>
+                <div class="metric-label">Active Listings</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-value">{avg_trust}</div>
+                <div class="metric-label">Average Trust Score</div>
+            </div>
+
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ── MONTHLY TRENDS ──────────────────────────────────────────
+        st.markdown("## 📈 Monthly Trends")
+
+        col1, col2 = st.columns(2)
+
+        # Monthly Matches
+        with col1:
+
+            st.subheader("Monthly Matches")
+
+            monthly_matches = db.get_monthly_matches()
+
+            if monthly_matches:
+
+                df_matches = pd.DataFrame(monthly_matches)
+
+                st.bar_chart(
+                    df_matches.set_index("month")["matches"]
+                )
+
+            else:
+                st.info("No monthly match data available.")
+
+        # Monthly Items
+        with col2:
+
+            st.subheader("Items Listed Per Month")
+
+            monthly_items = db.get_monthly_items()
+
+            if monthly_items:
+
+                df_items = pd.DataFrame(monthly_items)
+
+                st.bar_chart(
+                    df_items.set_index("month")["items"]
+                )
+
+            else:
+                st.info("No monthly item data available.")
+
+        st.divider()
+
+        # ── REGIONAL STATISTICS ─────────────────────────────────────
+        st.markdown("## 🌍 Regional Statistics")
+
+        col3, col4 = st.columns(2)
+
+        # Matches by Region
+        with col3:
+
+            st.subheader("Matches by Region")
+
+            region_matches = db.get_matches_by_region()
+
+            if region_matches:
+
+                df_region_matches = pd.DataFrame(region_matches)
+
+                st.bar_chart(
+                    df_region_matches.set_index("region")["matches"]
+                )
+
+            else:
+                st.info("No regional match data available.")
+
+        # Users by Region
+        with col4:
+
+            st.subheader("Users by Region")
+
+            users_region = db.get_users_by_region()
+
+            if users_region:
+
+                df_users_region = pd.DataFrame(users_region)
+
+                st.bar_chart(
+                    df_users_region.set_index("region")["users"]
+                )
+
+            else:
+                st.info("No regional user data available.")
+
+        st.divider()
+
+        # ── EXPIRING ITEMS ──────────────────────────────────────────
+        st.markdown("## ⏰ Items Approaching Expiry")
+
+        expiring_items = db.get_expiring_items()
+
+        if expiring_items:
+
+            df_expiring = pd.DataFrame(expiring_items)
+
+            st.dataframe(
+                df_expiring,
+                use_container_width=True
+            )
+
+        else:
+            st.info("No expiring items found.")
+
+        st.success("✅ Dashboard loaded successfully.")
