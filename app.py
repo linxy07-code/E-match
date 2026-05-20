@@ -11,9 +11,10 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from mailer import send_verification_otp
 
 # 3. Import modular pages and elements
-from trust_safety import render_trust_safety_page # <-- Clean modular injection
+from trust_safety import render_trust_safety_page 
 from upload import render_upload_page
 from marketplace import render_marketplace_page
+from dashboard import render_dashboard_page  # Modular Dashboard Import
 
 from datetime import datetime
 from database import EcoMatchDB
@@ -224,7 +225,7 @@ with st.sidebar:
             st.rerun()
 
         st.markdown("---")
-        if st.button("🚪 Logout", use_container_width=True):
+        if st.button("🚪 Logout", width="stretch"):
             if "ematch_user" in controller.getAll():
                 try:
                     controller.remove("ematch_user")
@@ -263,7 +264,7 @@ if not st.session_state.logged_in:
             
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("Verify Account →", use_container_width=True, type="primary"):
+                if st.button("Verify Account →", width="stretch", type="primary"):
                     verify_res = db.check_verification_code(st.session_state["pending_verification_user_id"], entered_code)
                     if verify_res["success"]:
                         st.success("🎉 Account verified successfully! You can now log in.")
@@ -274,7 +275,7 @@ if not st.session_state.logged_in:
                     else:
                         st.error(f"❌ Verification Failed: {verify_res['error']}")
             with c2:
-                if st.button("Cancel & Back", use_container_width=True):
+                if st.button("Cancel & Back", width="stretch"):
                     del st.session_state["pending_verification_user_id"]
                     del st.session_state["pending_username"]
                     st.rerun()
@@ -290,10 +291,10 @@ if not st.session_state.logged_in:
     with center:
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("🔑  Sign In", use_container_width=True, key="tab_login"):
+            if st.button("🔑  Sign In", width="stretch", key="tab_login"):
                 st.session_state.auth_tab = "login"; st.rerun()
         with c2:
-            if st.button("📝  Create Account", use_container_width=True, key="tab_reg"):
+            if st.button("📝  Create Account", width="stretch", key="tab_reg"):
                 st.session_state.auth_tab = "register"; st.rerun()
 
         if st.session_state.auth_tab == "login":
@@ -301,7 +302,7 @@ if not st.session_state.logged_in:
             l_user = st.text_input("Username", key="l_user")
             l_pass = st.text_input("Password", type="password", key="l_pass")
             remember = st.checkbox("Remember me on this device")
-            if st.button("Sign In →", use_container_width=True, key="do_login"):
+            if st.button("Sign In →", width="stretch", key="do_login"):
                 res = db.verify_user(l_user.strip(), l_pass)
                 if res["success"]:
                     st.session_state.logged_in   = True
@@ -312,7 +313,6 @@ if not st.session_state.logged_in:
                     if remember:
                         controller.set("ematch_user", res["user_id"])
                     st.rerun()
-                # UNVERIFIED SECURITY EXCEPTION INTERCEPT
                 elif res.get("error") == "unverified":
                     st.session_state["pending_verification_user_id"] = res["user_id"]
                     st.session_state["pending_username"] = l_user.strip()
@@ -328,26 +328,21 @@ if not st.session_state.logged_in:
             r_pass  = st.text_input("Password", type="password", key="r_pass")
             r_reg   = st.selectbox("Region", ["Selangor", "Kuala Lumpur", "Penang", "Johor",
                                               "Melaka", "Sabah", "Sarawak"])
-            if st.button("Create My Account →", use_container_width=True):
+            if st.button("Create My Account →", width="stretch"):
                 if not r_user or not r_email or not r_pass:
                     st.error("❌ Please fill in all fields.")
                 elif "@" not in r_email or "." not in r_email:
                     st.error("❌ Please enter a valid email address.")
                 else:
-                    # 1. Save user to database (defaults to is_verified = False)
                     res = db.add_user(r_user.strip(), r_pass, r_reg, "Personal", r_email.strip())
                     if res["success"]:
                         user_id = res["user_id"]
                         
-                        # 2. Dispatch the automated email OTP
                         with st.spinner("Dispatching authorization code to your email..."):
                             mail_res = send_verification_otp(r_email.strip())
                         
                         if mail_res["success"]:
-                            # 3. Store token reference in database verification table
                             db.save_verification_code(user_id, mail_res["otp"])
-                            
-                            # 4. Set routing targets to load the verification view
                             st.session_state["pending_verification_user_id"] = user_id
                             st.session_state["pending_username"] = r_user.strip()
                             st.success("📩 Account initialization successful! Please check your email inbox.")
@@ -363,7 +358,6 @@ else:
     user_id = st.session_state.get("user_id")
 
     # ── SECURITY GATEKEEPER: ENFORCE MANUAL BAN STATUS ────────────────────────
-    # Checks if account column contains 'Banned' in database context
     user_status_data = db.get_user_by_id(user_id)
     if user_status_data and user_status_data.get("status") == "Banned":
         st.markdown("""
@@ -375,14 +369,14 @@ else:
         </div>
         """, unsafe_allow_html=True)
         
-        if st.button("🚪 Leave Platform", use_container_width=True):
+        if st.button("🚪 Leave Platform", width="stretch"):
             if "ematch_user" in controller.getAll():
                 try: controller.remove("ematch_user")
                 except KeyError: pass
             st.session_state.clear()
             st.rerun()
             
-        st.stop() # Total application execution execution block halt
+        st.stop()
 
     # ── Marketplace ───────────────────────────────────────────────────────────
     if page_key == "Marketplace":
@@ -430,7 +424,7 @@ else:
 
                 with img_col:
                     if item.get("image_path"):
-                        st.image(item["image_path"], use_container_width=True)
+                        st.image(item["image_path"], width="stretch")
                     else:
                         st.markdown(
                             "<div style='height:140px;background:#f0fdf4;border-radius:10px;"
@@ -453,7 +447,7 @@ else:
 </div>
 """, unsafe_allow_html=True)
 
-                    if st.button("🗑️ Delete listing", key=f"del_{item['item_id']}", use_container_width=True):
+                    if st.button("🗑️ Delete listing", key=f"del_{item['item_id']}", width="stretch"):
                         result = db.delete_item(item["item_id"], user_id)
                         if result["success"]:
                             st.success("Listing deleted.")
@@ -483,7 +477,7 @@ else:
 
             col_hdr.caption(f"{len(notifs)} notification(s)")
 
-            if col_btn.button("✅ Mark all as read", use_container_width=True):
+            if col_btn.button("✅ Mark all as read", width="stretch"):
                 db.mark_notifications_read(user_id)
                 st.rerun()
 
@@ -513,148 +507,8 @@ else:
 
     # ── Trust & Safety ────────────────────────────────────────────────────────
     elif page_key == "Trust & Safety":
-
         render_trust_safety_page(db, user_id)
 
- # ── Dashboard ─────────────────────────────────────────────────────────
+    # ── Dashboard ─────────────────────────────────────────────────────────────
     elif page_key == "Dashboard":
-
-        st.markdown("""
-        <div class="page-header">
-            <h1>📊 Analytics Dashboard</h1>
-            <p>Live platform analytics overview</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # ── TOP METRICS ─────────────────────────────────────────────
-        stats = db.get_platform_stats()
-
-        total_users = stats.get("total_users", 0)
-        active_listings = stats.get("active_listings", 0)
-        avg_trust = stats.get("avg_trust_score", 0)
-
-        st.markdown(f"""
-        <div class="metric-row">
-
-            <div class="metric-card">
-                <div class="metric-value">{total_users}</div>
-                <div class="metric-label">Registered Users</div>
-            </div>
-
-            <div class="metric-card">
-                <div class="metric-value">{active_listings}</div>
-                <div class="metric-label">Active Listings</div>
-            </div>
-
-            <div class="metric-card">
-                <div class="metric-value">{avg_trust}</div>
-                <div class="metric-label">Average Trust Score</div>
-            </div>
-
-        </div>
-        """, unsafe_allow_html=True)
-
-        # ── MONTHLY TRENDS ──────────────────────────────────────────
-        st.markdown("## 📈 Monthly Trends")
-
-        col1, col2 = st.columns(2)
-
-        # Monthly Matches
-        with col1:
-
-            st.subheader("Monthly Matches")
-
-            monthly_matches = db.get_monthly_matches()
-
-            if monthly_matches:
-
-                df_matches = pd.DataFrame(monthly_matches)
-
-                st.bar_chart(
-                    df_matches.set_index("month")["matches"]
-                )
-
-            else:
-                st.info("No monthly match data available.")
-
-        # Monthly Items
-        with col2:
-
-            st.subheader("Items Listed Per Month")
-
-            monthly_items = db.get_monthly_items()
-
-            if monthly_items:
-
-                df_items = pd.DataFrame(monthly_items)
-
-                st.bar_chart(
-                    df_items.set_index("month")["items"]
-                )
-
-            else:
-                st.info("No monthly item data available.")
-
-        st.divider()
-
-        # ── REGIONAL STATISTICS ─────────────────────────────────────
-        st.markdown("## 🌍 Regional Statistics")
-
-        col3, col4 = st.columns(2)
-
-        # Matches by Region
-        with col3:
-
-            st.subheader("Matches by Region")
-
-            region_matches = db.get_matches_by_region()
-
-            if region_matches:
-
-                df_region_matches = pd.DataFrame(region_matches)
-
-                st.bar_chart(
-                    df_region_matches.set_index("region")["matches"]
-                )
-
-            else:
-                st.info("No regional match data available.")
-
-        # Users by Region
-        with col4:
-
-            st.subheader("Users by Region")
-
-            users_region = db.get_users_by_region()
-
-            if users_region:
-
-                df_users_region = pd.DataFrame(users_region)
-
-                st.bar_chart(
-                    df_users_region.set_index("region")["users"]
-                )
-
-            else:
-                st.info("No regional user data available.")
-
-        st.divider()
-
-        # ── EXPIRING ITEMS ──────────────────────────────────────────
-        st.markdown("## ⏰ Items Approaching Expiry")
-
-        expiring_items = db.get_expiring_items()
-
-        if expiring_items:
-
-            df_expiring = pd.DataFrame(expiring_items)
-
-            st.dataframe(
-                df_expiring,
-                use_container_width=True
-            )
-
-        else:
-            st.info("No expiring items found.")
-
-        st.success("✅ Dashboard loaded successfully.")
+        render_dashboard_page(db)
