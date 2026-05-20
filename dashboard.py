@@ -8,103 +8,137 @@ def render_dashboard_page(db):
         <p>Platform performance and regional activity overview</p>
     </div>""", unsafe_allow_html=True)
 
-    # 1. Pull dynamic platform numbers
-    stats = db.get_platform_stats()
+    # ── 1. FETCH LIVE SYSTEM METRICS ──────────────────────────────────────────
+    try:
+        stats = db.get_platform_stats() or {}
+    except Exception:
+        stats = {}
 
     total_matches   = stats.get("total_matches", 0)
     active_listings = stats.get("active_listings", 0)
     total_users      = stats.get("total_users", 0)
     near_expiry      = stats.get("near_expiry_count", 0)
-    avg_trust       = stats.get("avg_trust_score", 0.0)
+    avg_trust       = stats.get("avg_trust_score", 10.0)
 
-    match_delta     = stats.get("matches_this_week_delta", "+0")
-    listing_delta   = stats.get("listings_today_delta", "+0")
-    user_delta      = stats.get("users_this_month_delta", "+0")
+    # Pull raw values safely as strings
+    match_delta     = str(stats.get("matches_this_week_delta", "0")).strip()
+    listing_delta   = str(stats.get("listings_today_delta", "0")).strip()
+    user_delta      = str(stats.get("users_this_month_delta", "0")).strip()
 
-    # 2. Inject numbers into the metrics component
+    # Helper function to guarantee clean "+" formatting without tripping over existing signs
+    def format_delta(val):
+        clean_val = val.lstrip('+') # Remove any existing plus sign to let .isdigit() work
+        if clean_val.isdigit() and int(clean_val) >= 0:
+            return f"+{clean_val}"
+        return val # Return as-is if it's already structured or negative (e.g. "-3")
+
+    formatted_match_delta   = format_delta(match_delta)
+    formatted_listing_delta = format_delta(listing_delta)
+    formatted_user_delta    = format_delta(user_delta)
+
+    # Render dynamic metric structure layout matching your exact template
     st.markdown(f"""
     <div class="metric-row">
-        <div class="metric-card"><div class="metric-value">{total_matches:,}</div><div class="metric-label">Total Matches</div><div class="metric-delta">↑ {match_delta} this week</div></div>
-        <div class="metric-card"><div class="metric-value">{active_listings:,}</div><div class="metric-label">Active Listings</div><div class="metric-delta">↑ {listing_delta} today</div></div>
-        <div class="metric-card"><div class="metric-value">{total_users:,}</div><div class="metric-label">Registered Users</div><div class="metric-delta">↑ {user_delta} this month</div></div>
-        <div class="metric-card"><div class="metric-value">{near_expiry}</div><div class="metric-label">Near Expiry</div><div class="metric-delta" style="color:#dc2626">{"⚠ Needs attention" if near_expiry > 0 else "✓ All clear"}</div></div>
+        <div class="metric-card"><div class="metric-value">{total_matches:,}</div><div class="metric-label">Total Matches</div><div class="metric-delta">↑ {formatted_match_delta} this week</div></div>
+        <div class="metric-card"><div class="metric-value">{active_listings:,}</div><div class="metric-label">Active Listings</div><div class="metric-delta">↑ {formatted_listing_delta} today</div></div>
+        <div class="metric-card"><div class="metric-value">{total_users:,}</div><div class="metric-label">Registered Users</div><div class="metric-delta">↑ {formatted_user_delta} this month</div></div>
+        <div class="metric-card"><div class="metric-value">{near_expiry}</div><div class="metric-label">Near Expiry</div><div class="metric-delta" style="color:{"#737373" if near_expiry == 0 else "#dc2626"}">{"✓ All clear" if near_expiry == 0 else "⚠ Needs attention"}</div></div>
         <div class="metric-card"><div class="metric-value">{float(avg_trust):.1f}</div><div class="metric-label">Avg Trust Score</div><div class="metric-delta">↑ Excellent</div></div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Label arrays for mapping empty data fallbacks accurately
     months_labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-    region_labels = ["Selangor", "KL", "Penang", "Johor", "Others"]
+    region_labels = ["Selangor", "Kuala Lumpur", "Penang", "Johor", "Melaka", "Sabah", "Sarawak"]
 
-    # 3. Dynamic Charts 
+    # ── 2. DATA VISUALIZATION ENGINE ─────────────────────────────────────────
     tab_a, tab_b = st.tabs(["📈  Monthly Trends", "🗺️  Regional Breakdown"])
     
     with tab_a:
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown("### Monthly Matches — 2026")
-            monthly_matches = db.get_monthly_matches()
+            st.markdown("Monthly Matches — 2026")
+            try:
+                raw_matches = db.get_monthly_matches()
+                df_matches = pd.DataFrame({"month": months_labels, "matches": [0]*12})
+                if raw_matches:
+                    db_df = pd.DataFrame(raw_matches)
+                    y_col = [col for col in db_df.columns if col != "month"][0]
+                    for _, row in db_df.iterrows():
+                        m_val = str(row["month"])
+                        if m_val in months_labels:
+                            df_matches.loc[df_matches["month"] == m_val, "matches"] = row[y_col]
+            except Exception:
+                df_matches = pd.DataFrame({"month": months_labels, "matches": [0]*12})
             
-            # Upgrade: Guarantee a clean pandas DataFrame with clean string index labels
-            if not monthly_matches:
-                df_matches = pd.DataFrame({"Matches": [0]*12}, index=months_labels)
-            else:
-                df_matches = pd.DataFrame(monthly_matches)
-                if len(df_matches) == 12 and "month" not in df_matches.columns:
-                    df_matches.index = months_labels
-            st.bar_chart(df_matches, height=260)
+            st.bar_chart(df_matches, x="month", y="matches", height=260, color="#1f77b4")
             
         with c2:
-            st.markdown("### Items Listed per Month — 2026")
-            monthly_items = db.get_monthly_items()
+            st.markdown("Items Listed per Month — 2026")
+            try:
+                raw_items = db.get_monthly_items()
+                df_items = pd.DataFrame({"month": months_labels, "items": [0]*12})
+                if raw_items:
+                    db_df = pd.DataFrame(raw_items)
+                    y_col = [col for col in db_df.columns if col != "month"][0]
+                    for _, row in db_df.iterrows():
+                        m_val = str(row["month"])
+                        if m_val in months_labels:
+                            df_items.loc[df_items["month"] == m_val, "items"] = row[y_col]
+            except Exception:
+                df_items = pd.DataFrame({"month": months_labels, "items": [0]*12})
             
-            if not monthly_items:
-                df_items = pd.DataFrame({"Items Listed": [0]*12}, index=months_labels)
-            else:
-                df_items = pd.DataFrame(monthly_items)
-                if len(df_items) == 12 and "month" not in df_items.columns:
-                    df_items.index = months_labels
-            st.bar_chart(df_items, height=260)
+            st.bar_chart(df_items, x="month", y="items", height=260, color="#1f77b4")
             
     with tab_b:
         c3, c4 = st.columns(2)
         with c3:
-            st.markdown("### Matches by Region")
-            region_matches = db.get_matches_by_region()
+            st.markdown("Matches by Region")
+            try:
+                raw_reg_matches = db.get_matches_by_region()
+                df_reg_matches = pd.DataFrame({"region": region_labels, "matches": [0]*len(region_labels)})
+                if raw_reg_matches:
+                    db_df = pd.DataFrame(raw_reg_matches)
+                    y_col = [col for col in db_df.columns if col != "region"][0]
+                    for _, row in db_df.iterrows():
+                        r_val = str(row["region"])
+                        if r_val in region_labels:
+                            df_reg_matches.loc[df_reg_matches["region"] == r_val, "matches"] = row[y_col]
+            except Exception:
+                df_reg_matches = pd.DataFrame({"region": region_labels, "matches": [0]*len(region_labels)})
             
-            if not region_matches:
-                df_reg_matches = pd.DataFrame({"Matches": [0]*5}, index=region_labels)
-            else:
-                df_reg_matches = pd.DataFrame(region_matches)
-                if len(df_reg_matches) == 5 and "region" not in df_reg_matches.columns:
-                    df_reg_matches.index = region_labels
-            st.bar_chart(df_reg_matches, height=260)
+            st.bar_chart(df_reg_matches, x="region", y="matches", height=260, color="#1f77b4")
             
         with c4:
-            st.markdown("### Users by Region")
-            users_region = db.get_users_by_region()
+            st.markdown("Users by Region")
+            try:
+                raw_reg_users = db.get_users_by_region()
+                df_reg_users = pd.DataFrame({"region": region_labels, "users": [0]*len(region_labels)})
+                if raw_reg_users:
+                    db_df = pd.DataFrame(raw_reg_users)
+                    y_col = [col for col in db_df.columns if col != "region"][0]
+                    for _, row in db_df.iterrows():
+                        r_val = str(row["region"])
+                        if r_val in region_labels:
+                            df_reg_users.loc[df_reg_users["region"] == r_val, "users"] = row[y_col]
+            except Exception:
+                df_reg_users = pd.DataFrame({"region": region_labels, "users": [0]*len(region_labels)})
             
-            if not users_region:
-                df_reg_users = pd.DataFrame({"Users": [0]*5}, index=region_labels)
-            else:
-                df_reg_users = pd.DataFrame(users_region)
-                if len(df_reg_users) == 5 and "region" not in df_reg_users.columns:
-                    df_reg_users.index = region_labels
-            st.bar_chart(df_reg_users, height=260)
+            st.bar_chart(df_reg_users, x="region", y="users", height=260, color="#1f77b4")
 
-    # 4. Critical Live Table 
+    # ── 3. CRITICAL LIVE OPERATIONAL TABLES ───────────────────────────────────
     st.markdown("---")
     st.markdown("### ⏳ Items Approaching Expiry")
     
-    expiring_items_data = db.get_expiring_items()
-    if expiring_items_data:
-        # Upgrade: Safe handling of list of dicts directly into DataFrame layout
-        df_expiring = pd.DataFrame(expiring_items_data)
-        
-        # Optional Cleanup: Clean columns formatting for UI polish
-        if not df_expiring.empty:
-            df_expiring.columns = [col.replace('_', ' ').title() for col in df_expiring.columns]
-            
-        st.dataframe(df_expiring, use_container_width=True, hide_index=True)
-    else:
+    try:
+        expiring_items_data = db.get_expiring_items()
+        if expiring_items_data:
+            df_expiring = pd.DataFrame(expiring_items_data)
+            if not df_expiring.empty:
+                df_expiring.columns = [col.replace('_', ' ').title() for col in df_expiring.columns]
+                st.dataframe(df_expiring, use_container_width=True, hide_index=True)
+            else:
+                st.info("🎉 Perfect. No items are expiring soon or require immediate allocation!")
+        else:
+            st.info("🎉 Perfect. No items are expiring soon or require immediate allocation!")
+    except Exception:
         st.info("🎉 Perfect. No items are expiring soon or require immediate allocation!")

@@ -10,9 +10,10 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from mailer import send_verification_otp
 
 # 3. Import modular pages and elements
-from trust_safety import render_trust_safety_page # <-- Clean modular injection
+from trust_safety import render_trust_safety_page 
 from upload import render_upload_page
 from marketplace import render_marketplace_page
+from dashboard import render_dashboard_page  # Clean dynamic analytical routing
 
 from datetime import datetime
 from database import EcoMatchDB
@@ -192,9 +193,9 @@ with st.sidebar:
         st.markdown(f"""
         <div style="padding:10px 4px">
             <p style="font-size:.78rem;line-height:1.8;color:#86efac!important">
-            🌍 Region: <strong style="color:#d1fae5!important">{st.session_state.get('region','—')}</strong><br>
-            👤 User: <strong style="color:#d1fae5!important">{st.session_state.username}</strong><br>
-            ⭐ Trust: <strong style="color:#d1fae5!important">{st.session_state.get('trust_score',10)} / 10</strong>
+                🌍 Region: <strong style="color:#d1fae5!important">{st.session_state.get('region','—')}</strong><br>
+                👤 User: <strong style="color:#d1fae5!important">{st.session_state.username}</strong><br>
+                ⭐ Trust: <strong style="color:#d1fae5!important">{st.session_state.get('trust_score',10)} / 10</strong>
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -486,7 +487,7 @@ else:
                         else:
                             st.error(f"Could not delete: {result.get('error')}")
 
-                st.divider()
+                st.markdown("<br>", unsafe_allow_html=True)
 
     # ── Notifications ─────────────────────────────────────────────────────────
     elif page_key == "Notifications":
@@ -534,49 +535,6 @@ else:
     elif page_key == "Trust & Safety":
         render_trust_safety_page(db, user_id)
 
-    # ── Dashboard ─────────────────────────────────────────────────────────────
+    # ── Dashboard (Dynamic Engine Injection Routing Target) ───────────────────
     elif page_key == "Dashboard":
-        st.markdown("""
-        <div class="page-header">
-            <h1>📊 Analytics Dashboard</h1>
-            <p>Platform performance and regional activity overview</p>
-        </div>""", unsafe_allow_html=True)
-
-        st.markdown("""
-        <div class="metric-row">
-            <div class="metric-card"><div class="metric-value">430</div><div class="metric-label">Total Matches</div><div class="metric-delta">↑ +12 this week</div></div>
-            <div class="metric-card"><div class="metric-value">87</div><div class="metric-label">Active Listings</div><div class="metric-delta">↑ +5 today</div></div>
-            <div class="metric-card"><div class="metric-value">1,240</div><div class="metric-label">Registered Users</div><div class="metric-delta">↑ +34 this month</div></div>
-            <div class="metric-card"><div class="metric-value">14</div><div class="metric-label">Near Expiry</div><div class="metric-delta" style="color:#dc2626">⚠ Needs attention</div></div>
-            <div class="metric-card"><div class="metric-value">9.4</div><div class="metric-label">Avg Trust Score</div><div class="metric-delta">↑ Excellent</div></div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        tab_a, tab_b = st.tabs(["📈  Monthly Trends", "🗺️  Regional Breakdown"])
-        with tab_a:
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("*Monthly Matches — 2025*")
-                st.bar_chart({"Matches": [45,60,72,58,80,95,110,102,88,120,130,125]}, height=260)
-            with c2:
-                st.markdown("*Items Listed per Month — 2025*")
-                st.bar_chart({"Items Listed": [30,48,55,42,67,78,92,85,70,105,112,99]}, height=260)
-        with tab_b:
-            c3, c4 = st.columns(2)
-            with c3:
-                st.markdown("*Matches by Region*")
-                st.bar_chart({"Matches": [120,95,80,65,40]}, height=260)
-                st.caption("Selangor · KL · Penang · Johor · Others")
-            with c4:
-                st.markdown("*Users by Region*")
-                st.bar_chart({"Users": [420,380,210,150,80]}, height=260)
-                st.caption("Selangor · KL · Penang · Johor · Others")
-
-        st.markdown("---")
-        st.markdown("### ⏳ Items Approaching Expiry")
-        st.dataframe({
-            "Item":      ["Canned Goods Bundle","Fresh Vegetables Pack","Baby Formula Tins","Bread Loaves"],
-            "Region":    ["Penang","Selangor","KL","Johor"],
-            "Posted By": ["Ahmad Fauzi","Nurul Ain","Mei Lin","Raj Kumar"],
-            "Status":    ["🚨 Critical","⚠️ Warning","⚠️ Warning","🚨 Critical"],
-        }, use_container_width=True, hide_index=True)
+        render_dashboard_page(db)

@@ -135,7 +135,7 @@ class EcoMatchDB:
                     )
                 """)
 
-                # Automated Migration mapping trust score evaluations
+                # Automated Migration marking trust score evaluations
                 cursor.execute("""
                     SELECT column_name FROM information_schema.columns
                     WHERE table_name = 'reports' AND column_name = 'trust_score'
@@ -538,17 +538,62 @@ class EcoMatchDB:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     stats = {}
+                    
+                    # 1. Total Users
                     cursor.execute("SELECT COUNT(*) FROM users")
-                    stats["total_users"] = cursor.fetchone()["count"]
+                    stats["total_users"] = cursor.fetchone()["count"] or 0
+                    
+                    # 2. Active Listings
                     cursor.execute("SELECT COUNT(*) FROM items WHERE is_active = 1")
-                    stats["active_listings"] = cursor.fetchone()["count"]
+                    stats["active_listings"] = cursor.fetchone()["count"] or 0
+                    
+                    # 3. Average Trust Score
                     cursor.execute("SELECT AVG(trust_score) FROM users")
-                    stats["avg_trust_score"] = round(
-                        float(cursor.fetchone()["avg"] or 0), 1
-                    )
-                    return {"success": True, **stats}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+                    stats["avg_trust_score"] = round(float(cursor.fetchone()["avg"] or 0), 1)
+                    
+                    # 4. Total Matches (Total historical entries inside claims matrix)
+                    cursor.execute("SELECT COUNT(*) FROM claims")
+                    stats["total_matches"] = cursor.fetchone()["count"] or 0
+                    
+                    # 5. Near Expiry Count (Items expiring within the next rolling 7 days)
+                    cursor.execute("""
+                        SELECT COUNT(*) FROM items 
+                        WHERE is_active = 1 
+                        AND expiry_date IS NOT NULL 
+                        AND expiry_date <> ''
+                        AND TO_DATE(expiry_date, 'YYYY-MM-DD') <= CURRENT_DATE + INTERVAL '7 days'
+                        AND TO_DATE(expiry_date, 'YYYY-MM-DD') >= CURRENT_DATE
+                    """)
+                    stats["near_expiry_count"] = cursor.fetchone()["count"] or 0
+
+                    # 6. Deltas: Items added today
+                    cursor.execute("""
+                        SELECT COUNT(*) FROM items 
+                        WHERE created_at >= CURRENT_DATE
+                    """)
+                    stats["listings_today_delta"] = cursor.fetchone()["count"] or 0
+
+                    # 7. Deltas: Matches requested this rolling week (Last 7 Days)
+                    cursor.execute("""
+                        SELECT COUNT(*) FROM claims 
+                        WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
+                    """)
+                    stats["matches_this_week_delta"] = cursor.fetchone()["count"] or 0
+
+                    # 8. Deltas: Registered accounts created this calendar month
+                    cursor.execute("""
+                        SELECT COUNT(*) FROM users 
+                        WHERE created_at >= DATE_TRUNC('month', CURRENT_DATE)
+                    """)
+                    stats["users_this_month_delta"] = cursor.fetchone()["count"] or 0
+
+                    return stats
+        except Exception:
+            return {
+                "total_users": 0, "active_listings": 0, "avg_trust_score": 10.0,
+                "total_matches": 0, "near_expiry_count": 0,
+                "listings_today_delta": 0, "matches_this_week_delta": 0, "users_this_month_delta": 0
+            }
 
     # ── MISCONDUCT LOGGING METHOD ─────────────────────────────────────────────
 
@@ -584,11 +629,9 @@ class EcoMatchDB:
      # ── DASHBOARD ANALYTICS METHODS ───────────────────────────────
 
     def get_monthly_matches(self):
-
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-
                     cursor.execute("""
                         SELECT
                             TO_CHAR(created_at, 'YYYY-MM') AS month,
@@ -597,19 +640,14 @@ class EcoMatchDB:
                         GROUP BY month
                         ORDER BY month
                     """)
-
                     return cursor.fetchall()
-
         except Exception:
             return []
 
-
     def get_monthly_items(self):
-
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-
                     cursor.execute("""
                         SELECT
                             TO_CHAR(created_at, 'YYYY-MM') AS month,
@@ -618,19 +656,14 @@ class EcoMatchDB:
                         GROUP BY month
                         ORDER BY month
                     """)
-
                     return cursor.fetchall()
-
         except Exception:
             return []
 
-
     def get_matches_by_region(self):
-
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-
                     cursor.execute("""
                         SELECT
                             region,
@@ -639,19 +672,14 @@ class EcoMatchDB:
                         GROUP BY region
                         ORDER BY matches DESC
                     """)
-
                     return cursor.fetchall()
-
         except Exception:
             return []
 
-
     def get_users_by_region(self):
-
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-
                     cursor.execute("""
                         SELECT
                             region,
@@ -660,18 +688,14 @@ class EcoMatchDB:
                         GROUP BY region
                         ORDER BY users DESC
                     """)
-
                     return cursor.fetchall()
-
         except Exception:
             return []      
 
     def get_expiring_items(self):
-
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-
                     cursor.execute("""
                         SELECT
                             item_name,
@@ -683,8 +707,6 @@ class EcoMatchDB:
                         ORDER BY expiry_date ASC
                         LIMIT 10
                     """)
-
                     return cursor.fetchall()
-
         except Exception:
             return []
