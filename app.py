@@ -1,8 +1,7 @@
 import sys
 import os
 import streamlit as st
-from streamlit_autorefresh import st_autorefresh
-import pandas as pd
+import streamlit.components.v1 as components  # Required for focus automation script
 
 # 1. This tells Python to look inside the exact folder where app.py lives
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -11,10 +10,9 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from mailer import send_verification_otp
 
 # 3. Import modular pages and elements
-from trust_safety import render_trust_safety_page 
+from trust_safety import render_trust_safety_page # <-- Clean modular injection
 from upload import render_upload_page
 from marketplace import render_marketplace_page
-from dashboard import render_dashboard_page  # Modular Dashboard Import
 
 from datetime import datetime
 from database import EcoMatchDB
@@ -155,7 +153,7 @@ html,body,.stApp {
 .rule-impact-pos { color:#16a34a; font-weight:700; }
 .rule-impact-neg { color:#dc2626; font-weight:700; }
 
-div.stButton > button {
+div.stButton > button, div.stForm submit_button > button {
     background:linear-gradient(135deg,var(--green-600),var(--teal-600)) !important;
     color:white !important; border-radius:9px !important; border:none !important;
 }
@@ -225,7 +223,7 @@ with st.sidebar:
             st.rerun()
 
         st.markdown("---")
-        if st.button("🚪 Logout", width="stretch"):
+        if st.button("🚪 Logout", use_container_width=True):
             if "ematch_user" in controller.getAll():
                 try:
                     controller.remove("ematch_user")
@@ -264,7 +262,7 @@ if not st.session_state.logged_in:
             
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("Verify Account →", width="stretch", type="primary"):
+                if st.button("Verify Account →", use_container_width=True, type="primary"):
                     verify_res = db.check_verification_code(st.session_state["pending_verification_user_id"], entered_code)
                     if verify_res["success"]:
                         st.success("🎉 Account verified successfully! You can now log in.")
@@ -275,7 +273,7 @@ if not st.session_state.logged_in:
                     else:
                         st.error(f"❌ Verification Failed: {verify_res['error']}")
             with c2:
-                if st.button("Cancel & Back", width="stretch"):
+                if st.button("Cancel & Back", use_container_width=True):
                     del st.session_state["pending_verification_user_id"]
                     del st.session_state["pending_username"]
                     st.rerun()
@@ -291,36 +289,64 @@ if not st.session_state.logged_in:
     with center:
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("🔑  Sign In", width="stretch", key="tab_login"):
+            if st.button("🔑  Sign In", use_container_width=True, key="tab_login"):
                 st.session_state.auth_tab = "login"; st.rerun()
         with c2:
-            if st.button("📝  Create Account", width="stretch", key="tab_reg"):
+            if st.button("📝  Create Account", use_container_width=True, key="tab_reg"):
                 st.session_state.auth_tab = "register"; st.rerun()
 
+        # ── SIGN IN ENGINE (UPDATED TO FORM WITH JAVASCRIPT FOCUS FLOW) ──
         if st.session_state.auth_tab == "login":
             st.markdown('<div class="card"><h3>Sign In</h3><p style="color:#737373;font-size:.85rem">Access your account to continue.</p></div>', unsafe_allow_html=True)
-            l_user = st.text_input("Username", key="l_user")
-            l_pass = st.text_input("Password", type="password", key="l_pass")
-            remember = st.checkbox("Remember me on this device")
-            if st.button("Sign In →", width="stretch", key="do_login"):
-                res = db.verify_user(l_user.strip(), l_pass)
-                if res["success"]:
-                    st.session_state.logged_in   = True
-                    st.session_state.user_id     = res["user_id"]
-                    st.session_state.username    = l_user.strip()
-                    st.session_state.region      = res["region"]
-                    st.session_state.trust_score = res.get("trust_score", 10)
-                    if remember:
-                        controller.set("ematch_user", res["user_id"])
-                    st.rerun()
-                elif res.get("error") == "unverified":
-                    st.session_state["pending_verification_user_id"] = res["user_id"]
-                    st.session_state["pending_username"] = l_user.strip()
-                    st.warning("⚠️ Your account email is unverified. Redirecting to verification panel...")
-                    time.sleep(1.5)
-                    st.rerun()
-                else:
-                    st.error(f"❌ {res['error']}")
+            
+            with st.form("login_engine_form", clear_on_submit=False):
+                l_user = st.text_input("Username", key="l_user")
+                l_pass = st.text_input("Password", type="password", key="l_pass")
+                remember = st.checkbox("Remember me on this device")
+                login_submitted = st.form_submit_button("Sign In →", use_container_width=True)
+                
+                if login_submitted:
+                    res = db.verify_user(l_user.strip(), l_pass)
+                    if res["success"]:
+                        st.session_state.logged_in   = True
+                        st.session_state.user_id     = res["user_id"]
+                        st.session_state.username    = l_user.strip()
+                        st.session_state.region      = res["region"]
+                        st.session_state.trust_score = res.get("trust_score", 10)
+                        if remember:
+                            controller.set("ematch_user", res["user_id"])
+                        st.rerun()
+                    # UNVERIFIED SECURITY EXCEPTION INTERCEPT
+                    elif res.get("error") == "unverified":
+                        st.session_state["pending_verification_user_id"] = res["user_id"]
+                        st.session_state["pending_username"] = l_user.strip()
+                        st.warning("⚠️ Your account email is unverified. Redirecting to verification panel...")
+                        time.sleep(1.5)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {res['error']}")
+            
+            # ── EMBEDDED FOCUS INTERCEPT ENGINE ──
+            components.html("""
+            <script>
+                const doc = window.parent.document;
+                function setupFocusFlow() {
+                    const userInput = doc.querySelector('input[aria-label="Username"]');
+                    const passInput = doc.querySelector('input[aria-label="Password"]');
+                    if (userInput && passInput) {
+                        userInput.addEventListener('keydown', function(e) {
+                            if (e.keyCode === 13 || e.key === 'Enter') {
+                                e.preventDefault(); // Halted layout form submission
+                                passInput.focus();  // Moved programmatic focus downstream
+                            }
+                        });
+                    }
+                }
+                setTimeout(setupFocusFlow, 300);
+                setTimeout(setupFocusFlow, 700);
+            </script>
+            """, height=0, width=0)
+
         else:
             st.markdown('<div class="card"><h3>Create Account</h3><p style="color:#737373;font-size:.85rem">Join the E-match community.</p></div>', unsafe_allow_html=True)
             r_user  = st.text_input("Username", key="r_user")
@@ -328,21 +354,26 @@ if not st.session_state.logged_in:
             r_pass  = st.text_input("Password", type="password", key="r_pass")
             r_reg   = st.selectbox("Region", ["Selangor", "Kuala Lumpur", "Penang", "Johor",
                                               "Melaka", "Sabah", "Sarawak"])
-            if st.button("Create My Account →", width="stretch"):
+            if st.button("Create My Account →", use_container_width=True):
                 if not r_user or not r_email or not r_pass:
                     st.error("❌ Please fill in all fields.")
                 elif "@" not in r_email or "." not in r_email:
                     st.error("❌ Please enter a valid email address.")
                 else:
+                    # 1. Save user to database (defaults to is_verified = False)
                     res = db.add_user(r_user.strip(), r_pass, r_reg, "Personal", r_email.strip())
                     if res["success"]:
                         user_id = res["user_id"]
                         
+                        # 2. Dispatch the automated email OTP
                         with st.spinner("Dispatching authorization code to your email..."):
                             mail_res = send_verification_otp(r_email.strip())
                         
                         if mail_res["success"]:
+                            # 3. Store token reference in database verification table
                             db.save_verification_code(user_id, mail_res["otp"])
+                            
+                            # 4. Set routing targets to load the verification view
                             st.session_state["pending_verification_user_id"] = user_id
                             st.session_state["pending_username"] = r_user.strip()
                             st.success("📩 Account initialization successful! Please check your email inbox.")
@@ -369,14 +400,14 @@ else:
         </div>
         """, unsafe_allow_html=True)
         
-        if st.button("🚪 Leave Platform", width="stretch"):
+        if st.button("🚪 Leave Platform", use_container_width=True):
             if "ematch_user" in controller.getAll():
                 try: controller.remove("ematch_user")
                 except KeyError: pass
             st.session_state.clear()
             st.rerun()
             
-        st.stop()
+        st.stop() # Total application execution execution block halt
 
     # ── Marketplace ───────────────────────────────────────────────────────────
     if page_key == "Marketplace":
@@ -424,7 +455,7 @@ else:
 
                 with img_col:
                     if item.get("image_path"):
-                        st.image(item["image_path"], width="stretch")
+                        st.image(item["image_path"], use_container_width=True)
                     else:
                         st.markdown(
                             "<div style='height:140px;background:#f0fdf4;border-radius:10px;"
@@ -447,7 +478,7 @@ else:
 </div>
 """, unsafe_allow_html=True)
 
-                    if st.button("🗑️ Delete listing", key=f"del_{item['item_id']}", width="stretch"):
+                    if st.button("🗑️ Delete listing", key=f"del_{item['item_id']}", use_container_width=True):
                         result = db.delete_item(item["item_id"], user_id)
                         if result["success"]:
                             st.success("Listing deleted.")
@@ -459,7 +490,6 @@ else:
 
     # ── Notifications ─────────────────────────────────────────────────────────
     elif page_key == "Notifications":
-
         st.markdown(
             '<div class="page-header"><h1>🔔 Notifications</h1>'
             "<p>Requests and updates from the community</p></div>",
@@ -467,28 +497,23 @@ else:
         )
 
         notif_res = db.get_notifications(user_id)
-        notifs = notif_res.get("notifications", [])
+        notifs    = notif_res.get("notifications", [])
 
         if not notifs:
             st.info("No notifications yet. When someone requests your item, you'll see it here.")
-
         else:
             col_hdr, col_btn = st.columns([3, 1])
-
             col_hdr.caption(f"{len(notifs)} notification(s)")
-
-            if col_btn.button("✅ Mark all as read", width="stretch"):
+            if col_btn.button("✅ Mark all as read", use_container_width=True):
                 db.mark_notifications_read(user_id)
                 st.rerun()
 
             for n in notifs:
-
-                is_unread = not n.get("is_read", True)
+                is_unread  = not n.get("is_read", True)
                 card_class = "notif-item unread" if is_unread else "notif-item"
-                dot = "🟢 " if is_unread else ""
+                dot        = "🟢 " if is_unread else ""
 
                 created = n.get("created_at")
-
                 if created:
                     try:
                         ts = created.strftime("%d %b %Y, %I:%M %p")
@@ -511,4 +536,48 @@ else:
 
     # ── Dashboard ─────────────────────────────────────────────────────────────
     elif page_key == "Dashboard":
-        render_dashboard_page(db)
+        st.markdown("""
+        <div class="page-header">
+            <h1>📊 Analytics Dashboard</h1>
+            <p>Platform performance and regional activity overview</p>
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown("""
+        <div class="metric-row">
+            <div class="metric-card"><div class="metric-value">430</div><div class="metric-label">Total Matches</div><div class="metric-delta">↑ +12 this week</div></div>
+            <div class="metric-card"><div class="metric-value">87</div><div class="metric-label">Active Listings</div><div class="metric-delta">↑ +5 today</div></div>
+            <div class="metric-card"><div class="metric-value">1,240</div><div class="metric-label">Registered Users</div><div class="metric-delta">↑ +34 this month</div></div>
+            <div class="metric-card"><div class="metric-value">14</div><div class="metric-label">Near Expiry</div><div class="metric-delta" style="color:#dc2626">⚠ Needs attention</div></div>
+            <div class="metric-card"><div class="metric-value">9.4</div><div class="metric-label">Avg Trust Score</div><div class="metric-delta">↑ Excellent</div></div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        tab_a, tab_b = st.tabs(["📈  Monthly Trends", "🗺️  Regional Breakdown"])
+        with tab_a:
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("*Monthly Matches — 2025*")
+                st.bar_chart({"Matches": [45,60,72,58,80,95,110,102,88,120,130,125]}, height=260)
+            with c2:
+                st.markdown("*Items Listed per Month — 2025*")
+                st.bar_chart({"Items Listed": [30,48,55,42,67,78,92,85,70,105,112,99]}, height=260)
+        with tab_b:
+            c3, c4 = st.columns(2)
+            with c3:
+                st.markdown("*Matches by Region*")
+                st.bar_chart({"Matches": [120,95,80,65,40]}, height=260)
+                st.caption("Selangor · KL · Penang · Johor · Others")
+            with c4:
+                st.markdown("*Users by Region*")
+                st.bar_chart({"Users": [420,380,210,150,80]}, height=260)
+                st.caption("Selangor · KL · Penang · Johor · Others")
+
+        st.markdown("---")
+        st.markdown("### ⏳ Items Approaching Expiry")
+        st.dataframe({
+            "Item":      ["Canned Goods Bundle","Fresh Vegetables Pack","Baby Formula Tins","Bread Loaves"],
+            "Region":    ["Penang","Selangor","KL","Johor"],
+            "Posted By": ["Ahmad Fauzi","Nurul Ain","Mei Lin","Raj Kumar"],
+            "Days Left": [3, 5, 6, 2],
+            "Status":    ["🚨 Critical","⚠️ Warning","⚠️ Warning","🚨 Critical"],
+        }, use_container_width=True, hide_index=True)
