@@ -13,8 +13,8 @@ def render_dashboard_page(db):
 
     total_matches   = stats.get("total_matches", 0)
     active_listings = stats.get("active_listings", 0)
-    total_users     = stats.get("total_users", 0)
-    near_expiry     = stats.get("near_expiry_count", 0)
+    total_users      = stats.get("total_users", 0)
+    near_expiry      = stats.get("near_expiry_count", 0)
     avg_trust       = stats.get("avg_trust_score", 0.0)
 
     match_delta     = stats.get("matches_this_week_delta", "+0")
@@ -32,39 +32,65 @@ def render_dashboard_page(db):
     </div>
     """, unsafe_allow_html=True)
 
+    # Label arrays for mapping empty data fallbacks accurately
+    months_labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    region_labels = ["Selangor", "KL", "Penang", "Johor", "Others"]
+
     # 3. Dynamic Charts 
     tab_a, tab_b = st.tabs(["📈  Monthly Trends", "🗺️  Regional Breakdown"])
+    
     with tab_a:
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown("Monthly Matches — 2026")
+            st.markdown("### Monthly Matches — 2026")
             monthly_matches = db.get_monthly_matches()
+            
+            # Upgrade: Guarantee a clean pandas DataFrame with clean string index labels
             if not monthly_matches:
-                monthly_matches = {"Matches": [0]*12}
-            st.bar_chart(monthly_matches, height=260)
+                df_matches = pd.DataFrame({"Matches": [0]*12}, index=months_labels)
+            else:
+                df_matches = pd.DataFrame(monthly_matches)
+                if len(df_matches) == 12 and "month" not in df_matches.columns:
+                    df_matches.index = months_labels
+            st.bar_chart(df_matches, height=260)
+            
         with c2:
-            st.markdown("Items Listed per Month — 2026")
+            st.markdown("### Items Listed per Month — 2026")
             monthly_items = db.get_monthly_items()
+            
             if not monthly_items:
-                monthly_items = {"Items Listed": [0]*12}
-            st.bar_chart(monthly_items, height=260)
+                df_items = pd.DataFrame({"Items Listed": [0]*12}, index=months_labels)
+            else:
+                df_items = pd.DataFrame(monthly_items)
+                if len(df_items) == 12 and "month" not in df_items.columns:
+                    df_items.index = months_labels
+            st.bar_chart(df_items, height=260)
             
     with tab_b:
         c3, c4 = st.columns(2)
         with c3:
-            st.markdown("Matches by Region")
+            st.markdown("### Matches by Region")
             region_matches = db.get_matches_by_region()
+            
             if not region_matches:
-                region_matches = {"Matches": [0, 0, 0, 0, 0]}
-            st.bar_chart(region_matches, height=260)
-            st.caption("Selangor · KL · Penang · Johor · Others")
+                df_reg_matches = pd.DataFrame({"Matches": [0]*5}, index=region_labels)
+            else:
+                df_reg_matches = pd.DataFrame(region_matches)
+                if len(df_reg_matches) == 5 and "region" not in df_reg_matches.columns:
+                    df_reg_matches.index = region_labels
+            st.bar_chart(df_reg_matches, height=260)
+            
         with c4:
-            st.markdown("Users by Region")
+            st.markdown("### Users by Region")
             users_region = db.get_users_by_region()
+            
             if not users_region:
-                users_region = {"Users": [0, 0, 0, 0, 0]}
-            st.bar_chart(users_region, height=260)
-            st.caption("Selangor · KL · Penang · Johor · Others")
+                df_reg_users = pd.DataFrame({"Users": [0]*5}, index=region_labels)
+            else:
+                df_reg_users = pd.DataFrame(users_region)
+                if len(df_reg_users) == 5 and "region" not in df_reg_users.columns:
+                    df_reg_users.index = region_labels
+            st.bar_chart(df_reg_users, height=260)
 
     # 4. Critical Live Table 
     st.markdown("---")
@@ -72,6 +98,13 @@ def render_dashboard_page(db):
     
     expiring_items_data = db.get_expiring_items()
     if expiring_items_data:
-        st.dataframe(pd.DataFrame(expiring_items_data), use_container_width=True, hide_index=True)
+        # Upgrade: Safe handling of list of dicts directly into DataFrame layout
+        df_expiring = pd.DataFrame(expiring_items_data)
+        
+        # Optional Cleanup: Clean columns formatting for UI polish
+        if not df_expiring.empty:
+            df_expiring.columns = [col.replace('_', ' ').title() for col in df_expiring.columns]
+            
+        st.dataframe(df_expiring, use_container_width=True, hide_index=True)
     else:
         st.info("🎉 Perfect. No items are expiring soon or require immediate allocation!")
