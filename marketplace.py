@@ -1,4 +1,6 @@
 import streamlit as st
+import html
+import re
 from datetime import datetime, date
 from database import EcoMatchDB
 
@@ -80,52 +82,49 @@ def render_marketplace_page():
     }
     .mp-card-seller { font-size:.75rem; color:#737373; margin-top:8px; margin-bottom:4px; }
 
-    /* Custom Image Canvas */
+    /* Custom Image Canvas Frame */
     .mp-img-frame {
         width: 100%;
-        height: 280px; 
+        height: 320px; 
         overflow: hidden;
         border-radius: 10px;
-        margin-bottom: 8px;
+        margin-bottom: 12px;
         display: flex;
         align-items: center;
         justify-content: center;
-        background-color: transparent;
+        background-color: #f8fafc;
     }
     .mp-img-frame img {
         width: 100%;
         height: 100%;
-        object-fit: contain; 
-        padding: 2px;
+        object-fit: cover; 
+        padding: 0px;
     }
 
-    /* ── MINIMALIST TEXT-ONLY OVERRIDE FOR READ MORE BUTTONS ── */
-    div[data-testid="stVerticalBlock"] div:has(button[key^="btn_more_"]),
-    div[data-testid="stVerticalBlock"] div:has(button[key^="btn_less_"]) {
-        margin-top: -10px !important;
-        margin-bottom: 6px !important;
-        text-align: left !important;
+    /* ── PURE CSS PUSH-BUTTON TOGGLE (INSIDE THE CARD CONTAINER) ── */
+    .desc-toggle {
+        display: none;
     }
-
-    div[data-testid="stVerticalBlock"] button[key^="btn_more_"],
-    div[data-testid="stVerticalBlock"] button[key^="btn_less_"] {
-        background: transparent !important;
-        border: none !important;
-        padding: 0 !important;
-        color: #737373 !important; /* Muted gray text color */
-        font-size: 0.75rem !important; /* Tiny font footprint */
-        text-decoration: underline !important; /* Looks like standard link hyperlink text */
-        box-shadow: none !important;
-        min-height: unset !important;
-        height: auto !important;
-        font-weight: normal !important;
+    .desc-label {
+        color: #a3a3a3; /* Muted gray to make it less visible in color */
+        font-size: 0.75rem;
+        font-weight: 500;
+        cursor: pointer;
+        display: inline-block;
+        margin-top: 4px;
+        text-decoration: underline;
     }
-
-    div[data-testid="stVerticalBlock"] button[key^="btn_more_"]:hover,
-    div[data-testid="stVerticalBlock"] button[key^="btn_less_"]:hover {
-        color: #166534 !important; /* Shifts subtly to dark forest green on mouseover hover */
-        background: transparent !important;
+    .desc-label:hover {
+        color: #166534; /* Soft green highlight only on hover */
     }
+    .desc-full {
+        display: none;
+    }
+    /* Dynamic text segment toggles */
+    .desc-toggle:checked ~ .desc-short { display: none; }
+    .desc-toggle:checked ~ .desc-full  { display: inline; }
+    .desc-toggle:checked ~ .desc-label::after { content: " Less"; }
+    .desc-toggle:not(:checked) ~ .desc-label::after { content: " More"; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -182,12 +181,32 @@ def render_marketplace_page():
             item_id      = item["item_id"]
             listing_type = item.get("listing_type") or "free"
             price        = item.get("price")
-            description  = item.get("description") or ""
             region       = item.get("region") or "—"
             category     = item.get("category") or "—"
             condition    = item.get("condition") or "—"
-            seller_name  = item.get("seller_name") or "Unknown"
             seller_trust = item.get("seller_trust")
+
+            # ── 1. EXTRACT DATA SAFELY FROM DATABASE ──────────────────────────
+            raw_desc   = str(item.get('description') or "")
+            raw_seller = str(item.get('seller_name') or "Unknown")
+
+            # ── 2. BULLETPROOF REGEX TAG STRIPPER ─────────────────────────────
+            if "<p" in raw_desc or "</p>" in raw_desc:
+                raw_desc = re.sub(r'<[^>]*>', '', raw_desc).strip()
+                
+            if "<p" in raw_seller or "</p>" in raw_seller:
+                if "Listed by" in raw_seller:
+                    match = re.search(r'Listed by\s*<strong>(.*?)</strong>', raw_seller)
+                    raw_seller = match.group(1) if match else re.sub(r'<[^>]*>', '', raw_seller)
+                else:
+                    raw_seller = re.sub(r'<[^>]*>', '', raw_seller)
+                    
+            raw_seller = raw_seller.replace("👤 Listed by", "").split("·")[0].strip()
+
+            # ── 3. SANITIZE CONTENT OUTPUTS FOR DISPLAY ───────────────────────
+            item_name_safe    = html.escape(str(item.get('item_name', '')))
+            description_clean = html.escape(raw_desc)
+            seller_name_clean = html.escape(raw_seller)
 
             exp_cls, exp_label = expiry_badge(item.get("expiry_date"))
             badge_html         = listing_badge_html(listing_type, price)
@@ -199,48 +218,43 @@ def render_marketplace_page():
                 if img_url:
                     st.markdown(f'<div class="mp-img-frame"><img src="{img_url}"></div>', unsafe_allow_html=True)
                 else:
-                    st.markdown("<div class='mp-img-frame' style='font-size:2rem; background-color:#f8fafc;'>📦</div>", unsafe_allow_html=True)
+                    st.markdown("<div class='mp-img-frame' style='font-size:3rem;'>📦</div>", unsafe_allow_html=True)
 
                 price_row = f"<div class='mp-card-row'>💰 <strong>Price:</strong> RM {float(price):.2f}</div>" if (listing_type == "sell" and price) else ""
                 trust_str = f"{float(seller_trust):.1f}/10" if seller_trust is not None else "10.0/10"
 
-                card_top_html = f"""<div class="mp-card">
-                <p class="mp-card-title">{item['item_name']}</p>
-                <div class="mp-card-meta">{badge_html}{expiry_badge_html}</div>
-                <div class="mp-card-row">📍 <strong>Region:</strong> {region}</div>
-                <div class="mp-card-row">🏷️ <strong>Category:</strong> {category}</div>
-                <div class="mp-card-row">🔍 <strong>Condition:</strong> {condition}</div>
-                {price_row}
-                <p class="mp-card-seller">👤 Listed by <strong>{seller_name}</strong> · ⭐ {trust_str}</p>
-                """
-                st.markdown(card_top_html, unsafe_allow_html=True)
-
-                # Description block with text-only triggers
+                # ── 4. CONDITIONAL HOOK FOR LESS VISIBLE TOGGLES ──────────────
                 char_limit = 80
-                if description:
-                    if len(description) <= char_limit:
-                        st.markdown(f'<p class="mp-card-desc">{description}</p>', unsafe_allow_html=True)
-                    else:
-                        exp_key = f"expand_{item_id}"
-                        if exp_key not in st.session_state:
-                            st.session_state[exp_key] = False
-
-                        if st.session_state[exp_key]:
-                            st.markdown(f'<p class="mp-card-desc">{description}</p>', unsafe_allow_html=True)
-                            if st.button("Read Less", key=f"btn_less_{item_id}"):
-                                st.session_state[exp_key] = False
-                                st.rerun()
-                        else:
-                            st.markdown(f'<p class="mp-card-desc">{description[:char_limit]}...</p>', unsafe_allow_html=True)
-                            if st.button("Read More", key=f"btn_more_{item_id}"):
-                                st.session_state[exp_key] = True
-                                st.rerun()
-                else:
-                    st.markdown('<p class="mp-card-desc" style="font-style: italic; color:#a3a3a3;">No description provided.</p>', unsafe_allow_html=True)
                 
-                st.markdown("</div>", unsafe_allow_html=True)
+                if description_clean:
+                    if len(description_clean) <= char_limit:
+                        desc_inner_html = f'{description_clean}'
+                    else:
+                        desc_inner_html = f"""
+                        <input type="checkbox" id="toggle_{item_id}" class="desc-toggle">
+                        <span class="desc-short">{description_clean[:char_limit]}...</span>
+                        <span class="desc-full">{description_clean}</span>
+                        <label for="toggle_{item_id}" class="desc-label">Read</label>
+                        """
+                else:
+                    desc_inner_html = '<span style="font-style: italic; color:#a3a3a3;">No description provided.</span>'
 
-            # 📥 RENDERING THE BUTTON ROW BLOCK (Guarantees baseline alignment)
+                # Complete composite card payload string block execution
+                full_card_html = f"""
+                <div class="mp-card">
+                    <p class="mp-card-title">{item_name_safe}</p>
+                    <div class="mp-card-meta">{badge_html}{expiry_badge_html}</div>
+                    <div class="mp-card-row">📍 <strong>Region:</strong> {region}</div>
+                    <div class="mp-card-row">🏷️ <strong>Category:</strong> {category}</div>
+                    <div class="mp-card-row">🔍 <strong>Condition:</strong> {condition}</div>
+                    {price_row}
+                    <p class="mp-card-seller">👤 Listed by <strong>{seller_name_clean}</strong> · ⭐ {trust_str}</p>
+                    <div class="mp-card-desc">{desc_inner_html}</div>
+                </div>
+                """
+                st.markdown(full_card_html, unsafe_allow_html=True)
+
+            # 📥 RENDERING THE BUTTON ROW BLOCK
             with cols_buttons[col_idx]:
                 btn_label = (
                     "🛍️ Request to Buy"   if listing_type == "sell"     else
