@@ -2,13 +2,13 @@ import cloudinary
 import cloudinary.uploader
 import streamlit as st
 from database import EcoMatchDB
-from PIL import Image # Keeping this just in case you want local edits
+from PIL import Image 
 import io
 
 # 1. Initialize Database
 db = EcoMatchDB()
 
-# 2. Configure Cloudinary ── FIXED: Updated to match your lowercase nested secrets.toml structure ──
+# 2. Configure Cloudinary
 cloudinary.config(
     cloud_name = st.secrets["cloudinary"]["cloud_name"],
     api_key    = st.secrets["cloudinary"]["api_key"],
@@ -53,7 +53,7 @@ def render_upload_page():
         st.warning("⚠️ Please sign in to list an item.")
         st.stop()
 
-    # 1. Initialize our "toggle switch"
+    # 1. Initialize our success tracking toggle state switch
     if "upload_success_mode" not in st.session_state:
         st.session_state.upload_success_mode = False
 
@@ -69,13 +69,18 @@ def render_upload_page():
         
         st.success("Great job! Your item is now visible to the community.")
         
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
-            if st.button("🛒 View in Marketplace", use_container_width=True):
+            if st.button("🛒 View Marketplace", use_container_width=True):
                 st.session_state.upload_success_mode = False 
                 st.session_state.current_page = "🛒  Marketplace"
                 st.rerun()
         with col2:
+            if st.button("📦 View My Item", use_container_width=True):
+                st.session_state.upload_success_mode = False
+                st.session_state.current_page = "📦 My Items"
+                st.rerun()
+        with col3:
             if st.button("➕ Upload Another Item", use_container_width=True):
                 for key in ["upload_item_name", "upload_description", "upload_image_file",
                             "upload_listing_type", "upload_price"]:
@@ -168,6 +173,8 @@ def render_upload_page():
                 price=price if listing_type == "sell" else None,
             )
         
-            if result["success"]:
+            if result.get("success"):
                 st.session_state.upload_success_mode = True
                 st.rerun()
+            else:
+                st.error(f"Could not save listing details: {result.get('error')}")

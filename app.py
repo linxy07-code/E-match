@@ -578,6 +578,5 @@ else:
             "Item":      ["Canned Goods Bundle","Fresh Vegetables Pack","Baby Formula Tins","Bread Loaves"],
             "Region":    ["Penang","Selangor","KL","Johor"],
             "Posted By": ["Ahmad Fauzi","Nurul Ain","Mei Lin","Raj Kumar"],
-            "Days Left": [3, 5, 6, 2],
             "Status":    ["🚨 Critical","⚠️ Warning","⚠️ Warning","🚨 Critical"],
         }, use_container_width=True, hide_index=True)
