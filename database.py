@@ -55,7 +55,8 @@ class EcoMatchDB:
                     )
                 """)
 
-                # 2. Marketplace Items Table
+                # 2. Marketplace Items Table 
+                # NOTE: For an ideal setup, change expiry_date from TEXT to DATE
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS items (
                         id             SERIAL PRIMARY KEY,
@@ -66,7 +67,7 @@ class EcoMatchDB:
                         condition      TEXT DEFAULT 'Good',
                         quantity       INTEGER DEFAULT 1,
                         description    TEXT,
-                        expiry_date    TEXT,
+                        expiry_date    TEXT, 
                         image_path     TEXT,
                         listing_type   TEXT DEFAULT 'free',
                         price          NUMERIC(10, 2),
@@ -181,7 +182,6 @@ class EcoMatchDB:
                         password.encode("utf-8"),
                         row["password_hash"].encode("utf-8"),
                     ):
-                        # Block access if account email verification is incomplete
                         if not row["is_verified"]:
                             return {"success": False, "error": "unverified", "user_id": row["id"]}
                         
@@ -198,7 +198,6 @@ class EcoMatchDB:
             return {"success": False, "error": str(e)}
 
     def get_user_by_id(self, user_id):
-        """Used by safety engines and cookie auto-login parameters to pull live system metrics."""
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -212,7 +211,6 @@ class EcoMatchDB:
             return None
 
     def get_user_by_username(self, username):
-        """Fetches profile mapping parameters using a unique text string handle."""
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -228,12 +226,10 @@ class EcoMatchDB:
     # ── EMAIL VERIFICATION ENGINE METHODS ────────────────────────────────────
 
     def save_verification_code(self, user_id, otp_code, expiry_minutes=15):
-        """Saves or updates a rolling verification code tied to a user account profile."""
         expires_at = datetime.datetime.now() + datetime.timedelta(minutes=expiry_minutes)
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-                    # PostgreSQL UPSERT handling duplicate registration attempts cleanly
                     cursor.execute("""
                         INSERT INTO email_verification (user_id, otp_code, expires_at)
                         VALUES (%s, %s, %s)
@@ -246,7 +242,6 @@ class EcoMatchDB:
             return {"success": False, "error": str(e)}
 
     def check_verification_code(self, user_id, user_entered_code):
-        """Validates temporary verification credentials and elevates user profile registration parameters."""
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -264,7 +259,6 @@ class EcoMatchDB:
                     if datetime.datetime.now() > row["expires_at"]:
                         return {"success": False, "error": "Code timeout expired. Please request a new token."}
                     
-                    # Core Atomic Status Escalation Workflow
                     cursor.execute("UPDATE users SET is_verified = TRUE WHERE id = %s", (user_id,))
                     cursor.execute("DELETE FROM email_verification WHERE user_id = %s", (user_id,))
                     conn.commit()
@@ -292,6 +286,7 @@ class EcoMatchDB:
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
+                    # FIXED: Added quantity explicitly into the insert targets and variables
                     cursor.execute("""
                         INSERT INTO items
                             (user_id, item_name, category, region, condition, quantity,
@@ -394,8 +389,6 @@ class EcoMatchDB:
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-
-                    # Block duplicate active pending claims
                     cursor.execute("""
                         SELECT id FROM claims
                         WHERE item_id = %s AND claimer_id = %s AND status = 'pending'
@@ -403,14 +396,12 @@ class EcoMatchDB:
                     if cursor.fetchone():
                         return {"success": False, "error": "duplicate"}
 
-                    # Save system claim record
                     cursor.execute("""
                         INSERT INTO claims (item_id, claimer_id, message)
                         VALUES (%s, %s, %s) RETURNING id
                     """, (item_id, claimer_id, message))
                     claim_id = cursor.fetchone()["id"]
 
-                    # Fetch product details alongside applicant information context
                     cursor.execute("""
                         SELECT
                             i.item_name,
@@ -539,23 +530,19 @@ class EcoMatchDB:
                 with conn.cursor() as cursor:
                     stats = {}
                     
-                    # 1. Total Users
                     cursor.execute("SELECT COUNT(*) FROM users")
                     stats["total_users"] = cursor.fetchone()["count"] or 0
                     
-                    # 2. Active Listings
                     cursor.execute("SELECT COUNT(*) FROM items WHERE is_active = 1")
                     stats["active_listings"] = cursor.fetchone()["count"] or 0
                     
-                    # 3. Average Trust Score
                     cursor.execute("SELECT AVG(trust_score) FROM users")
                     stats["avg_trust_score"] = round(float(cursor.fetchone()["avg"] or 0), 1)
                     
-                    # 4. Total Matches (Total historical entries inside claims matrix)
                     cursor.execute("SELECT COUNT(*) FROM claims")
                     stats["total_matches"] = cursor.fetchone()["count"] or 0
                     
-                    # 5. Near Expiry Count (Items expiring within the next rolling 7 days)
+                    # Watch out here: Text type dates can break if format varies
                     cursor.execute("""
                         SELECT COUNT(*) FROM items 
                         WHERE is_active = 1 
@@ -566,21 +553,18 @@ class EcoMatchDB:
                     """)
                     stats["near_expiry_count"] = cursor.fetchone()["count"] or 0
 
-                    # 6. Deltas: Items added today
                     cursor.execute("""
                         SELECT COUNT(*) FROM items 
                         WHERE created_at >= CURRENT_DATE
                     """)
                     stats["listings_today_delta"] = cursor.fetchone()["count"] or 0
 
-                    # 7. Deltas: Matches requested this rolling week (Last 7 Days)
                     cursor.execute("""
                         SELECT COUNT(*) FROM claims 
                         WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
                     """)
                     stats["matches_this_week_delta"] = cursor.fetchone()["count"] or 0
 
-                    # 8. Deltas: Registered accounts created this calendar month
                     cursor.execute("""
                         SELECT COUNT(*) FROM users 
                         WHERE created_at >= DATE_TRUNC('month', CURRENT_DATE)
@@ -598,7 +582,6 @@ class EcoMatchDB:
     # ── MISCONDUCT LOGGING METHOD ─────────────────────────────────────────────
 
     def create_misconduct_report(self, report_payload):
-        """Inserts user misconduct report payloads straight into PostgreSQL 'reports' table."""
         try:
             reported_user = self.get_user_by_username(report_payload["reported_username"])
             if not reported_user:
@@ -617,7 +600,7 @@ class EcoMatchDB:
                         reported_id,
                         report_payload["reason"],
                         report_payload["details"],
-                        0,  # Default unreviewed snapshot parameter
+                        0,  
                         reported_trust,
                         report_payload["created_at"]
                     ))
@@ -626,7 +609,7 @@ class EcoMatchDB:
         except Exception as e:
             return {"success": False, "error": str(e)}
         
-     # ── DASHBOARD ANALYTICS METHODS ───────────────────────────────
+    # ── DASHBOARD ANALYTICS METHODS ───────────────────────────────
 
     def get_monthly_matches(self):
         try:

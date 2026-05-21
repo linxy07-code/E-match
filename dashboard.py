@@ -135,7 +135,7 @@ def render_dashboard_page(db):
             df_expiring = pd.DataFrame(expiring_items_data)
             if not df_expiring.empty:
                 df_expiring.columns = [col.replace('_', ' ').title() for col in df_expiring.columns]
-                st.dataframe(df_expiring, use_container_width=True, hide_index=True)
+                st.dataframe(df_expiring, use_container_width="stretch", hide_index=True)
             else:
                 st.info("🎉 Perfect. No items are expiring soon or require immediate allocation!")
         else:

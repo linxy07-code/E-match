@@ -129,8 +129,13 @@ def render_marketplace_page():
     """, unsafe_allow_html=True)
 
     # ── Filters ──────────────────────────────────────────────────────────────
-    f1, f2, f3 = st.columns([3, 1, 1])
-    search_q    = f1.text_input("", placeholder="🔍 Search items…", key="mp_search")
+    f1, f2, f3, f4 = st.columns([2, 1, 1, 1])
+    search_q = f1.text_input(
+    "Search Marketplace Items", 
+    placeholder="🔍 Search items…", 
+    key="mp_search", 
+    label_visibility="collapsed"
+)
     filt_region = f2.selectbox(
         "Region",
         ["All Regions", "Johor", "Kedah", "Kelantan", "Melaka", "Negeri Sembilan",
@@ -142,6 +147,11 @@ def render_marketplace_page():
         "Type",
         ["All Types", "🆓 Free", "🔄 Exchange", "💵 Sell"],
         key="mp_type",
+    )
+    filt_condition = f4.selectbox(
+        "Condition",
+        ["All Conditions", "Brand New", "Good", "Second Hand"],
+        key="mp_condition"
     )
 
     # ── Fetch ─────────────────────────────────────────────────────────────────
@@ -163,6 +173,10 @@ def render_marketplace_page():
     type_map = {"🆓 Free": "free", "🔄 Exchange": "exchange", "💵 Sell": "sell"}
     if filt_type in type_map:
         items = [i for i in items if i.get("listing_type") == type_map[filt_type]]
+
+    # ── Condition Filtering Logic Evaluation ──
+    if filt_condition != "All Conditions":
+        items = [i for i in items if i.get("condition") == filt_condition]
 
     if not items:
         st.info("No community items found matching selected filter criteria.")
@@ -252,7 +266,8 @@ def render_marketplace_page():
                     <div class="mp-card-desc">{desc_inner_html}</div>
                 </div>
                 """
-                st.markdown(full_card_html, unsafe_allow_html=True)
+                st.markdown(full_card_html, unsafe_allow_html=True) # 🚀 Keep ONLY this line, aligned with full_card_html above!
+                
 
             # 📥 RENDERING THE BUTTON ROW BLOCK
             with cols_buttons[col_idx]:
@@ -275,7 +290,7 @@ def render_marketplace_page():
                         height=80,
                     )
                     
-                    if st.button(f"✅ Confirm", key=f"confirm_{item_id}", use_container_width=True):
+                    if st.button(f"✅ Confirm", key=f"confirm_{item_id}", width="stretch"):
                         if not current_user_id:
                             st.error("⚠️ Please log in to complete requests.")
                         else:

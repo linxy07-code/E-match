@@ -2,7 +2,7 @@ import cloudinary
 import cloudinary.uploader
 import streamlit as st
 from database import EcoMatchDB
-from PIL import Image 
+from PIL import Image
 import io
 
 # 1. Initialize Database
@@ -10,19 +10,21 @@ db = EcoMatchDB()
 
 # 2. Configure Cloudinary
 cloudinary.config(
-    cloud_name = st.secrets["cloudinary"]["cloud_name"],
-    api_key    = st.secrets["cloudinary"]["api_key"],
-    api_secret = st.secrets["cloudinary"]["api_secret"],
-    secure = True
+    cloud_name=st.secrets["cloudinary"]["cloud_name"],
+    api_key=st.secrets["cloudinary"]["api_key"],
+    api_secret=st.secrets["cloudinary"]["api_secret"],
+    secure=True
 )
 
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
+
 
 def save_uploaded_file(uploaded_file) -> str | None:
     if uploaded_file is None:
         return None
 
     ext = uploaded_file.name.rsplit(".", 1)[-1].lower()
+
     if ext not in ALLOWED_EXTENSIONS:
         st.error(f"❌ Unsupported file type '.{ext}'")
         return None
@@ -41,75 +43,190 @@ def save_uploaded_file(uploaded_file) -> str | None:
                 }
             ]
         )
+
         return upload_result.get("secure_url")
 
     except Exception as e:
         st.error(f"❌ Cloud upload failed: {e}")
         return None
 
-    
+
 def render_upload_page():
+
     if not st.session_state.get("logged_in"):
         st.warning("⚠️ Please sign in to list an item.")
         st.stop()
 
-    # 1. Initialize our success tracking toggle state switch
+    # Success mode toggle
     if "upload_success_mode" not in st.session_state:
         st.session_state.upload_success_mode = False
 
     user_id = st.session_state["user_id"]
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # MODE A: SUCCESS CHOICE (Only shows after a successful post)
-    # ══════════════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════
+    # SUCCESS PAGE
+    # ════════════════════════════════════════════════════════════════
     if st.session_state.upload_success_mode:
+
         st.balloons()
-        
-        st.markdown("""<div class="page-header"><h1>🎉 Item Successfully Listed!</h1></div>""", unsafe_allow_html=True)
-        
+
+        st.markdown("""
+        <div class="page-header">
+            <h1>🎉 Item Successfully Listed!</h1>
+        </div>
+        """, unsafe_allow_html=True)
+
         st.success("Great job! Your item is now visible to the community.")
-        
+
         col1, col2, col3 = st.columns(3)
+
         with col1:
-            if st.button("🛒 View Marketplace", use_container_width=True):
-                st.session_state.upload_success_mode = False 
-                st.session_state.current_page = "🛒  Marketplace"
+            if st.button("🛒 View Marketplace", use_container_width="stretch"):
+                st.session_state.upload_success_mode = False
+                st.session_state.current_page = "🛒 Marketplace"
                 st.rerun()
+
         with col2:
-            if st.button("📦 View My Item", use_container_width=True):
+            if st.button("📦 View My Items", use_container_width="stretch"):
                 st.session_state.upload_success_mode = False
                 st.session_state.current_page = "📦 My Items"
                 st.rerun()
+
         with col3:
-            if st.button("➕ Upload Another Item", use_container_width=True):
-                for key in ["upload_item_name", "upload_description", "upload_image_file",
-                            "upload_listing_type", "upload_price"]:
+            if st.button("➕ Upload Another Item", use_container_width="stretch"):
+
+                # 💡 UPDATE 1: Added "upload_quantity" to clear when resetting the form
+                for key in [
+                    "upload_item_name",
+                    "upload_category",
+                    "upload_region",
+                    "upload_condition",
+                    "upload_quantity",
+                    "upload_description",
+                    "upload_image_file",
+                    "upload_listing_type_label",
+                    "upload_price",
+                    "upload_has_expiry",
+                    "upload_expiry_date"
+                ]:
                     if key in st.session_state:
                         del st.session_state[key]
-                
+
                 st.session_state.upload_success_mode = False
                 st.rerun()
-        
-        return # STOP HERE
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # MODE B: THE ORIGINAL FORM (Shows by default)
-    # ══════════════════════════════════════════════════════════════════════════
-    st.markdown("""<div class="page-header"><h1>📦 List a New Resource</h1></div>""", unsafe_allow_html=True)
-    
+        return
+
+    # ════════════════════════════════════════════════════════════════
+    # UPLOAD FORM
+    # ════════════════════════════════════════════════════════════════
+
+    st.markdown("""
+    <div class="page-header">
+        <h1>📦 List a New Resource</h1>
+    </div>
+    """, unsafe_allow_html=True)
+
     col_main, col_side = st.columns([2, 1])
-    with col_main:
-        st.markdown("<div class='form-section'><p class='form-section-title'>📋 Item Details</p>", unsafe_allow_html=True)
-        item_name = st.text_input("Item Name *", key="upload_item_name")
-        category = st.selectbox("Category *", ["Groceries & Food", "Household", "Electronics", "Fashion & Apparel", "Lifestyle & Hobbies", "Others"], key="upload_category")
-        region = st.selectbox("Pickup Region *", ["Johor", "Kedah", "Kelantan", "Melaka", "Negeri Sembilan", "Pahang", "Perak", "Perlis", "Pulau Pinang", "Selangor", "Terengganu", "Sabah", "Sarawak"], key="upload_region")
-        description = st.text_area("Description", key="upload_description")
-        has_expiry = st.checkbox("This item has an expiry date", key="upload_has_expiry")
-        expiry_date = st.date_input("Expiry Date", key="upload_expiry_date") if has_expiry else None
 
-        # ── LISTING TYPE ──────────────────────────────────────────────────────
+    # ───────────────── MAIN FORM ─────────────────
+    with col_main:
+
+        st.markdown("""
+        <div class='form-section'>
+            <p class='form-section-title'>📋 Item Details</p>
+        """, unsafe_allow_html=True)
+
+        # Item Name
+        item_name = st.text_input(
+            "Item Name *",
+            key="upload_item_name"
+        )
+
+        # Category
+        category = st.selectbox(
+            "Category *",
+            [
+                "Groceries & Food",
+                "Household",
+                "Electronics",
+                "Fashion & Apparel",
+                "Lifestyle & Hobbies",
+                "Others"
+            ],
+            key="upload_category"
+        )
+
+        # Region
+        region = st.selectbox(
+            "Pickup Region *",
+            [
+                "Johor",
+                "Kedah",
+                "Kelantan",
+                "Melaka",
+                "Negeri Sembilan",
+                "Pahang",
+                "Perak",
+                "Perlis",
+                "Pulau Pinang",
+                "Selangor",
+                "Terengganu",
+                "Sabah",
+                "Sarawak"
+            ],
+            key="upload_region"
+        )
+
+        # ───────────────── CONDITION ─────────────────
+        condition = st.selectbox(
+            "Item Condition *",
+            [
+                "Brand New",
+                "Good",
+                "Second Hand"
+            ],
+            key="upload_condition"
+        )
+
+        # 💡 UPDATE 2: Added Quantity Input Selector Here
+        quantity = st.number_input(
+            "Quantity *",
+            min_value=1,
+            value=1,
+            step=1,
+            key="upload_quantity"
+        )
+
+        # Description
+        description = st.text_area(
+            "Description",
+            key="upload_description"
+        )
+
+        # Expiry Date
+        has_expiry = st.checkbox(
+            "This item has an expiry date",
+            key="upload_has_expiry"
+        )
+
+        expiry_date = (
+            st.date_input(
+                "Expiry Date",
+                key="upload_expiry_date"
+            )
+            if has_expiry
+            else None
+        )
+
+        # ───────────────── LISTING TYPE ─────────────────
         st.markdown("---")
-        st.markdown("<p class='form-section-title'>💰 Listing Type</p>", unsafe_allow_html=True)
+
+        st.markdown("""
+        <p class='form-section-title'>
+            💰 Listing Type
+        </p>
+        """, unsafe_allow_html=True)
 
         LISTING_TYPE_OPTIONS = {
             "🆓 Free of Charge": "free",
@@ -120,61 +237,106 @@ def render_upload_page():
         listing_type_label = st.radio(
             "How would you like to offer this item? *",
             options=list(LISTING_TYPE_OPTIONS.keys()),
-            key="upload_listing_type_label",
             horizontal=True,
+            key="upload_listing_type_label"
         )
+
         listing_type = LISTING_TYPE_OPTIONS[listing_type_label]
 
-        # Show price field only when "Sell" is selected
+        # Price
         price = None
+
         if listing_type == "sell":
+
             price = st.number_input(
                 "Your Price (RM) *",
                 min_value=0.01,
                 step=0.50,
                 format="%.2f",
                 key="upload_price",
-                help="Set the price in Malaysian Ringgit (RM).",
+                help="Set the price in Malaysian Ringgit (RM)."
             )
+
         elif listing_type == "exchange":
-            st.info("💡 Describe what you're looking to exchange for in the Description field above.")
+
+            st.info(
+                "💡 Describe what you're looking to exchange for "
+                "in the Description field above."
+            )
 
         st.markdown("</div>", unsafe_allow_html=True)
 
+    # ───────────────── IMAGE SECTION ─────────────────
     with col_side:
-        st.markdown("<div class='form-section'><p class='form-section-title'>🖼️ Item Image</p>", unsafe_allow_html=True)
-        uploaded_file = st.file_uploader("Upload", type=list(ALLOWED_EXTENSIONS), key="upload_image_file")
+
+        st.markdown("""
+        <div class='form-section'>
+            <p class='form-section-title'>🖼️ Item Image</p>
+        """, unsafe_allow_html=True)
+
+        uploaded_file = st.file_uploader(
+            "Upload",
+            type=list(ALLOWED_EXTENSIONS),
+            key="upload_image_file"
+        )
+
         st.markdown("</div>", unsafe_allow_html=True)
 
-    if st.button("📤 Post Item", use_container_width=True):
-        if not item_name or not uploaded_file:
-            st.error("Please provide both a name and an image.")
+    # ════════════════════════════════════════════════════════════════
+    # POST BUTTON
+    # ════════════════════════════════════════════════════════════════
+
+    if st.button("📤 Post Item", use_container_width="stretch"):
+
+        # Validation
+        if not item_name:
+            st.error("Please enter an item name.")
             return
 
-        # Validate price when listing type is "sell"
+        if not uploaded_file:
+            st.error("Please upload an image.")
+            return
+
         if listing_type == "sell" and (price is None or price <= 0):
-            st.error("Please enter a valid price for your item.")
+            st.error("Please enter a valid price.")
             return
 
-        with st.spinner("Uploading..."):
+        # Upload image
+        with st.spinner("Uploading item..."):
+
             image_url = save_uploaded_file(uploaded_file)
-    
+
         if image_url:
-            expiry_str = expiry_date.strftime("%Y-%m-%d") if expiry_date else None
+
+            expiry_str = (
+                expiry_date.strftime("%Y-%m-%d")
+                if expiry_date
+                else None
+            )
+
+            # Save to database
+            # 💡 UPDATE 3: Passing quantity into db.add_item() method
             result = db.add_item(
                 user_id=user_id,
                 item_name=item_name,
                 category=category,
                 region=region,
+                condition=condition,  
+                quantity=quantity, # <-- Linked here
                 expiry_date=expiry_str,
                 image_path=image_url,
                 description=description,
-                listing_type=listing_type,       # "free" | "exchange" | "sell"
+                listing_type=listing_type,
                 price=price if listing_type == "sell" else None,
             )
-        
+
             if result.get("success"):
+
                 st.session_state.upload_success_mode = True
                 st.rerun()
+
             else:
-                st.error(f"Could not save listing details: {result.get('error')}")
+                st.error(
+                    f"Could not save listing details: "
+                    f"{result.get('error')}"
+                )

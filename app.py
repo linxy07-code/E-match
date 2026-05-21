@@ -1,7 +1,6 @@
 import sys
 import os
 import streamlit as st
-import streamlit.components.v1 as components  # Required for focus automation script
 
 # 1. This tells Python to look inside the exact folder where app.py lives
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -175,6 +174,26 @@ def _lt_badge(listing_type, price=None):
     return f'<span class="lt-badge {css}">{label}</span>'
 
 
+@st.dialog("🔔 New Item Requests!")
+def show_login_notifications(notifs):
+    st.markdown("##### Here are the pending requests for your listings:")
+    st.markdown("---")
+    
+    # Render up to 3 unread notifications
+    for n in notifs[:3]:
+        st.markdown(f"""
+        <div style="margin-bottom: 12px; padding: 12px; border-left: 4px solid #2e7d32; background-color: #f1f8e9; border-radius: 6px;">
+            <p style="margin: 0; font-weight: bold; color: #2e7d32;">🟢 {n.get('title', 'Incoming Request')}</p>
+            <p style="margin: 4px 0 0 0; color: #333; font-size: 0.95rem;">{n.get('body', 'Someone wants to match with your item!')}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    st.markdown("---")
+    if st.button("Go to Notifications Hub", width="stretch", type="primary"):
+        st.session_state.current_page = f"🔔  Notifications"
+        st.rerun()
+
+
 # ── SIDEBAR ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown(
@@ -224,7 +243,7 @@ with st.sidebar:
             st.rerun()
 
         st.markdown("---")
-        if st.button("🚪 Logout", use_container_width=True):
+        if st.button("🚪 Logout", width="stretch"):
             if "ematch_user" in controller.getAll():
                 try:
                     controller.remove("ematch_user")
@@ -263,7 +282,7 @@ if not st.session_state.logged_in:
             
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("Verify Account →", use_container_width=True, type="primary"):
+                if st.button("Verify Account →", width="stretch", type="primary"):
                     verify_res = db.check_verification_code(st.session_state["pending_verification_user_id"], entered_code)
                     if verify_res["success"]:
                         st.success("🎉 Account verified successfully! You can now log in.")
@@ -274,7 +293,7 @@ if not st.session_state.logged_in:
                     else:
                         st.error(f"❌ Verification Failed: {verify_res['error']}")
             with c2:
-                if st.button("Cancel & Back", use_container_width=True):
+                if st.button("Cancel & Back", width="stretch"):
                     del st.session_state["pending_verification_user_id"]
                     del st.session_state["pending_username"]
                     st.rerun()
@@ -290,10 +309,10 @@ if not st.session_state.logged_in:
     with center:
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("🔑  Sign In", use_container_width=True, key="tab_login"):
+            if st.button("🔑  Sign In", width="stretch", key="tab_login"):
                 st.session_state.auth_tab = "login"; st.rerun()
         with c2:
-            if st.button("📝  Create Account", use_container_width=True, key="tab_reg"):
+            if st.button("📝  Create Account", width="stretch", key="tab_reg"):
                 st.session_state.auth_tab = "register"; st.rerun()
 
         # ── SIGN IN ENGINE (UPDATED TO FORM WITH JAVASCRIPT FOCUS FLOW) ──
@@ -304,7 +323,7 @@ if not st.session_state.logged_in:
                 l_user = st.text_input("Username", key="l_user")
                 l_pass = st.text_input("Password", type="password", key="l_pass")
                 remember = st.checkbox("Remember me on this device")
-                login_submitted = st.form_submit_button("Sign In →", use_container_width=True)
+                login_submitted = st.form_submit_button("Sign In →", width="stretch")
                 
                 if login_submitted:
                     res = db.verify_user(l_user.strip(), l_pass)
@@ -327,26 +346,33 @@ if not st.session_state.logged_in:
                     else:
                         st.error(f"❌ {res['error']}")
             
-            # ── EMBEDDED FOCUS INTERCEPT ENGINE ──
-            components.html("""
-            <script>
-                const doc = window.parent.document;
-                function setupFocusFlow() {
-                    const userInput = doc.querySelector('input[aria-label="Username"]');
-                    const passInput = doc.querySelector('input[aria-label="Password"]');
-                    if (userInput && passInput) {
-                        userInput.addEventListener('keydown', function(e) {
-                            if (e.keyCode === 13 || e.key === 'Enter') {
-                                e.preventDefault(); // Halted layout form submission
-                                passInput.focus();  // Moved programmatic focus downstream
-                            }
-                        });
+            # ── SAFE EMBEDDED FOCUS INTERCEPT ENGINE ──
+            focus_script_html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <script>
+                    const doc = window.parent.document;
+                    function setupFocusFlow() {
+                        const userInput = doc.querySelector('input[aria-label="Username"]');
+                        const passInput = doc.querySelector('input[aria-label="Password"]');
+                        if (userInput && passInput) {
+                            userInput.addEventListener('keydown', function(e) {
+                                if (e.keyCode === 13 || e.key === 'Enter') {
+                                    e.preventDefault(); 
+                                    passInput.focus();  
+                                }
+                            });
+                        }
                     }
-                }
-                setTimeout(setupFocusFlow, 300);
-                setTimeout(setupFocusFlow, 700);
-            </script>
-            """, height=0, width=0)
+                    setTimeout(setupFocusFlow, 300);
+                    setTimeout(setupFocusFlow, 700);
+                </script>
+            </head>
+            <body></body>
+            </html>
+            """
+            st.iframe(src=f"data:text/html;charset=utf-8,{focus_script_html}", height=1)
 
         else:
             st.markdown('<div class="card"><h3>Create Account</h3><p style="color:#737373;font-size:.85rem">Join the E-match community.</p></div>', unsafe_allow_html=True)
@@ -355,7 +381,7 @@ if not st.session_state.logged_in:
             r_pass  = st.text_input("Password", type="password", key="r_pass")
             r_reg   = st.selectbox("Region", ["Selangor", "Kuala Lumpur", "Penang", "Johor",
                                               "Melaka", "Sabah", "Sarawak"])
-            if st.button("Create My Account →", use_container_width=True):
+            if st.button("Create My Account →", width="stretch"):
                 if not r_user or not r_email or not r_pass:
                     st.error("❌ Please fill in all fields.")
                 elif "@" not in r_email or "." not in r_email:
@@ -389,6 +415,21 @@ else:
     # ── LOGGED-IN PAGES ───────────────────────────────────────────────────────
     user_id = st.session_state.get("user_id")
 
+    # 🚀 POP-UP TRIGGER ENGINE: Fires exactly once following successful login view routing
+    if "has_shown_popup" not in st.session_state:
+        try:
+            notif_res = db.get_notifications(user_id)
+            notifs = notif_res.get("notifications", []) if isinstance(notif_res, dict) else notif_res
+            
+            # Filter down to real unread listing updates
+            unread_requests = [n for n in notifs if not n.get("is_read", True)]
+            if unread_requests:
+                show_login_notifications(unread_requests)
+        except Exception:
+            pass
+            
+        st.session_state["has_shown_popup"] = True
+
     # ── SECURITY GATEKEEPER: ENFORCE MANUAL BAN STATUS ────────────────────────
     user_status_data = db.get_user_by_id(user_id)
     if user_status_data and user_status_data.get("status") == "Banned":
@@ -401,14 +442,14 @@ else:
         </div>
         """, unsafe_allow_html=True)
         
-        if st.button("🚪 Leave Platform", use_container_width=True):
+        if st.button("🚪 Leave Platform", width="stretch"):
             if "ematch_user" in controller.getAll():
                 try: controller.remove("ematch_user")
                 except KeyError: pass
             st.session_state.clear()
             st.rerun()
             
-        st.stop() # Total application execution execution block halt
+        st.stop() # Total application execution block halt
 
     # ── Marketplace ───────────────────────────────────────────────────────────
     if page_key == "Marketplace":
@@ -456,7 +497,7 @@ else:
 
                 with img_col:
                     if item.get("image_path"):
-                        st.image(item["image_path"], use_container_width=True)
+                        st.image(item["image_path"], width="stretch")
                     else:
                         st.markdown(
                             "<div style='height:140px;background:#f0fdf4;border-radius:10px;"
@@ -479,7 +520,7 @@ else:
 </div>
 """, unsafe_allow_html=True)
 
-                    if st.button("🗑️ Delete listing", key=f"del_{item['item_id']}", use_container_width=True):
+                    if st.button("🗑️ Delete listing", key=f"del_{item['item_id']}", width="stretch"):
                         result = db.delete_item(item["item_id"], user_id)
                         if result["success"]:
                             st.success("Listing deleted.")
@@ -505,7 +546,7 @@ else:
         else:
             col_hdr, col_btn = st.columns([3, 1])
             col_hdr.caption(f"{len(notifs)} notification(s)")
-            if col_btn.button("✅ Mark all as read", use_container_width=True):
+            if col_btn.button("✅ Mark all as read", width="stretch"):
                 db.mark_notifications_read(user_id)
                 st.rerun()
 

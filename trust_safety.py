@@ -93,7 +93,7 @@ def render_trust_safety_page(db, user_id):
         key="rep_details"
     )
     
-    if st.button("Submit Report", key="btn_report", use_container_width=True):
+    if st.button("Submit Report", key="btn_report", use_container_width="stretch"):
         if not report_user_input.strip():
             st.warning("⚠️ Please provide a username to file this report.")
         else:
