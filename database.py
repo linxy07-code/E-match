@@ -56,7 +56,6 @@ class EcoMatchDB:
                 """)
 
                 # 2. Marketplace Items Table 
-                # NOTE: For an ideal setup, change expiry_date from TEXT to DATE
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS items (
                         id             SERIAL PRIMARY KEY,
@@ -286,7 +285,6 @@ class EcoMatchDB:
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-                    # FIXED: Added quantity explicitly into the insert targets and variables
                     cursor.execute("""
                         INSERT INTO items
                             (user_id, item_name, category, region, condition, quantity,
@@ -337,7 +335,7 @@ class EcoMatchDB:
                         params.append(f"%{search}%")
                     query += " ORDER BY i.id DESC"
                     cursor.execute(query, params)
-                    return {"success": True, "items": cursor.fetchall()}
+                    return {"success": True, "items": [dict(row) for row in cursor.fetchall()]}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -363,7 +361,7 @@ class EcoMatchDB:
                         WHERE user_id = %s AND is_active = 1
                         ORDER BY id DESC
                     """, (user_id,))
-                    return {"success": True, "items": cursor.fetchall()}
+                    return {"success": True, "items": [dict(row) for row in cursor.fetchall()]}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -448,7 +446,7 @@ class EcoMatchDB:
                         WHERE c.item_id = %s
                         ORDER BY c.created_at DESC
                     """, (item_id,))
-                    return {"success": True, "claims": cursor.fetchall()}
+                    return {"success": True, "claims": [dict(row) for row in cursor.fetchall()]}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -471,15 +469,19 @@ class EcoMatchDB:
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-                    query = (
-                        "SELECT * FROM notifications WHERE user_id = %s"
-                        + (" AND is_read = FALSE" if unread_only else "")
-                        + " ORDER BY created_at DESC LIMIT 50"
-                    )
+                    query = """
+                        SELECT id, user_id, title, body, is_read, created_at 
+                        FROM notifications 
+                        WHERE user_id = %s
+                    """
+                    if unread_only:
+                        query += " AND is_read = FALSE"
+                    query += " ORDER BY created_at DESC LIMIT 50"
+                    
                     cursor.execute(query, (user_id,))
-                    return {"success": True, "notifications": cursor.fetchall()}
+                    return {"success": True, "notifications": [dict(row) for row in cursor.fetchall()]}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": str(e), "notifications": []}
 
     def mark_notifications_read(self, user_id):
         try:
@@ -503,7 +505,8 @@ class EcoMatchDB:
                            WHERE user_id = %s AND is_read = FALSE""",
                         (user_id,),
                     )
-                    return int(cursor.fetchone()["count"])
+                    row = cursor.fetchone()
+                    return int(row["count"]) if row else 0
         except Exception:
             return 0
 
@@ -537,12 +540,12 @@ class EcoMatchDB:
                     stats["active_listings"] = cursor.fetchone()["count"] or 0
                     
                     cursor.execute("SELECT AVG(trust_score) FROM users")
-                    stats["avg_trust_score"] = round(float(cursor.fetchone()["avg"] or 0), 1)
+                    res_avg = cursor.fetchone()
+                    stats["avg_trust_score"] = round(float(res_avg["avg"]), 1) if res_avg and res_avg["avg"] is not None else 10.0
                     
                     cursor.execute("SELECT COUNT(*) FROM claims")
                     stats["total_matches"] = cursor.fetchone()["count"] or 0
                     
-                    # Watch out here: Text type dates can break if format varies
                     cursor.execute("""
                         SELECT COUNT(*) FROM items 
                         WHERE is_active = 1 
@@ -623,7 +626,7 @@ class EcoMatchDB:
                         GROUP BY month
                         ORDER BY month
                     """)
-                    return cursor.fetchall()
+                    return [dict(row) for row in cursor.fetchall()]
         except Exception:
             return []
 
@@ -639,7 +642,7 @@ class EcoMatchDB:
                         GROUP BY month
                         ORDER BY month
                     """)
-                    return cursor.fetchall()
+                    return [dict(row) for row in cursor.fetchall()]
         except Exception:
             return []
 
@@ -655,7 +658,7 @@ class EcoMatchDB:
                         GROUP BY region
                         ORDER BY matches DESC
                     """)
-                    return cursor.fetchall()
+                    return [dict(row) for row in cursor.fetchall()]
         except Exception:
             return []
 
@@ -671,7 +674,7 @@ class EcoMatchDB:
                         GROUP BY region
                         ORDER BY users DESC
                     """)
-                    return cursor.fetchall()
+                    return [dict(row) for row in cursor.fetchall()]
         except Exception:
             return []      
 
@@ -690,6 +693,6 @@ class EcoMatchDB:
                         ORDER BY expiry_date ASC
                         LIMIT 10
                     """)
-                    return cursor.fetchall()
+                    return [dict(row) for row in cursor.fetchall()]
         except Exception:
             return []

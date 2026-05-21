@@ -190,7 +190,7 @@ def show_login_notifications(notifs):
         
     st.markdown("---")
     if st.button("Go to Notifications Hub", width="stretch", type="primary"):
-        st.session_state.current_page = f"🔔  Notifications"
+        st.session_state.current_page = "🔔  Notifications"
         st.rerun()
 
 
@@ -207,7 +207,7 @@ with st.sidebar:
 
         # Unread notification count
         unread = db.count_unread_notifications(user_id)
-        notif_label = f"🔔 Notifications ({unread} new)" if unread else "🔔 Notifications"
+        notif_label = f"🔔  Notifications ({unread} new)" if unread else "🔔  Notifications"
 
         st.markdown(f"""
         <div style="padding:10px 4px">
@@ -255,8 +255,11 @@ with st.sidebar:
 
 
 # ── MAIN ROUTER ───────────────────────────────────────────────────────────────
+# Extract base string from page labels
 page_key = st.session_state.current_page.strip().split("  ", 1)[-1]
-if page_key.startswith("🔔"):
+
+# FIXED: Ensure any dynamic text like "Notifications (3)" safely maps back to "Notifications"
+if page_key.startswith("Notifications"):
     page_key = "Notifications"
 
 if not st.session_state.logged_in:
@@ -419,7 +422,7 @@ else:
     if "has_shown_popup" not in st.session_state:
         try:
             notif_res = db.get_notifications(user_id)
-            notifs = notif_res.get("notifications", []) if isinstance(notif_res, dict) else notif_res
+            notifs    = notif_res.get("notifications", []) if isinstance(notif_res, dict) else notif_res
             
             # Filter down to real unread listing updates
             unread_requests = [n for n in notifs if not n.get("is_read", True)]
