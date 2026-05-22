@@ -13,6 +13,7 @@ from trust_safety import render_trust_safety_page
 from upload import render_upload_page
 from marketplace import render_marketplace_page
 from dashboard import render_dashboard_page  # Clean dynamic analytical routing
+from mycart import render_cart_page
 
 from datetime import datetime
 from database import EcoMatchDB
@@ -221,6 +222,7 @@ with st.sidebar:
 
         NAV_OPTIONS = [
             "🛒  Marketplace",
+            "🧾  My Cart",
             "📦  Upload Item",
             "🧾  My Items",
             "🛡️  Trust & Safety",
@@ -230,7 +232,7 @@ with st.sidebar:
 
         # Keep current_page in sync if the label changed (unread count ticked)
         if st.session_state.current_page not in NAV_OPTIONS and "Notifications" in st.session_state.current_page:
-            st.session_state.current_page = NAV_OPTIONS[5]
+            st.session_state.current_page = NAV_OPTIONS[6]
 
         selection = st.radio(
             "Navigation", NAV_OPTIONS,
@@ -457,6 +459,9 @@ else:
     # ── Marketplace ───────────────────────────────────────────────────────────
     if page_key == "Marketplace":
         render_marketplace_page()
+
+    elif page_key == "My Cart":
+        render_cart_page()
 
     # ── Upload Item ───────────────────────────────────────────────────────────
     elif page_key == "Upload Item":

@@ -142,3 +142,63 @@ def render_dashboard_page(db):
             st.info("🎉 Perfect. No items are expiring soon or require immediate allocation!")
     except Exception:
         st.info("🎉 Perfect. No items are expiring soon or require immediate allocation!")
+
+
+    def cancel_reservation(self, item_id, user_id):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+
+                    cursor.execute("""
+                    SELECT reserved_by FROM items WHERE id = %s
+                    """, (item_id,))
+                    row = cursor.fetchone()
+    
+                    if not row:
+                        return {"success": False, "error": "Item not found"}
+
+                    if row["reserved_by"] != user_id:
+                        return {"success": False, "error": "Not your reserved item"}
+
+                    cursor.execute("""
+                        UPDATE items
+                        SET reserved_by = NULL,
+                        status = 'available'
+                        WHERE id = %s
+                    """, (item_id,))
+
+                    conn.commit()
+                    return {"success": True}
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        
+
+
+    def mark_item_received(self, item_id, user_id):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+
+                    cursor.execute("""
+                    SELECT reserved_by FROM items WHERE id = %s
+                    """, (item_id,))
+                    row = cursor.fetchone()
+
+                    if not row:
+                        return {"success": False, "error": "Item not found"}
+
+                    if row["reserved_by"] != user_id:
+                        return {"success": False, "error": "Not your item"}
+    
+                    cursor.execute("""
+                        UPDATE items
+                        SET status = 'completed'
+                        WHERE id = %s
+                    """, (item_id,))
+
+                    conn.commit()
+                    return {"success": True}
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}

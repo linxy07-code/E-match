@@ -300,7 +300,12 @@ def render_marketplace_page():
                                 message=msg,
                             )
                             if result.get("success"):
-                                st.success("✅ Request sent! The seller has been notified.")
+
+                                # 🔒 lock item immediately so it disappears from marketplace
+                                db.reserve_item(item_id=item_id, user_id=current_user_id)
+
+                                st.success("🛒 Added to your cart! Waiting for seller response.")
+                                st.rerun()
                             elif result.get("error") == "duplicate":
                                 st.warning("⚠️ You already have a pending request for this item.")
                             else:

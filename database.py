@@ -325,6 +325,7 @@ class EcoMatchDB:
                         FROM items i
                         JOIN users u ON i.user_id = u.id
                         WHERE i.is_active = 1
+                        AND i.reserved_by IS NULL
                     """
                     params = []
                     if category:
@@ -364,6 +365,36 @@ class EcoMatchDB:
                     return {"success": True, "items": [dict(row) for row in cursor.fetchall()]}
         except Exception as e:
             return {"success": False, "error": str(e)}
+        
+    def reserve_item(self, item_id, user_id):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+
+                    # check item exists + not already reserved
+                    cursor.execute("""
+                        SELECT reserved_by FROM items WHERE id = %s
+                    """, (item_id,))
+                    row = cursor.fetchone()
+
+                    if not row:
+                        return {"success": False, "error": "Item not found"}
+
+                    if row["reserved_by"] is not None:
+                        return {"success": False, "error": "Already reserved"}
+
+                    # reserve item
+                    cursor.execute("""
+                        UPDATE items
+                        SET reserved_by = %s
+                        WHERE id = %s
+                    """, (user_id, item_id))
+
+                    conn.commit()
+                    return {"success": True}
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
     def delete_item(self, item_id, user_id):
         try:
@@ -380,6 +411,68 @@ class EcoMatchDB:
                     return {"success": True}
         except Exception as e:
             return {"success": False, "error": str(e)}
+        
+
+    def get_cart_items(self, user_id):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT
+                            i.id AS item_id,
+                            i.item_name,
+                            i.category,
+                            i.region,
+                            i.condition,
+                            i.quantity,
+                            i.description,
+                            i.image_path,
+                            i.listing_type,
+                            i.price,
+                            i.created_at,
+                            u.username AS seller_name
+                        FROM items i
+                        JOIN users u ON i.user_id = u.id
+                        WHERE i.reserved_by = %s
+                        ORDER BY i.created_at DESC
+                    """, (user_id,))
+
+                    return {
+                        "success": True,
+                        "items": [dict(row) for row in cursor.fetchall()]
+                    }
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def unreserve_item(self, item_id, user_id):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+
+                    cursor.execute("""
+                        SELECT reserved_by FROM items WHERE id = %s
+                    """, (item_id,))
+                    row = cursor.fetchone()
+
+                    if not row:
+                        return {"success": False, "error": "Item not found"}
+
+                    if row["reserved_by"] != user_id:
+                        return {"success": False, "error": "Not your reserved item"}
+
+                    cursor.execute("""
+                        UPDATE items
+                        SET reserved_by = NULL
+                        WHERE id = %s
+                    """, (item_id,))
+
+                    conn.commit()
+                    return {"success": True}
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
 
     # ── TRANSACTION CLAIM MATRICES METHODS ────────────────────────────────────
 
@@ -696,3 +789,66 @@ class EcoMatchDB:
                     return [dict(row) for row in cursor.fetchall()]
         except Exception:
             return []
+        
+    def reserve_item(self, item_id, user_id):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+
+                    # prevent double reservation
+                    cursor.execute("""
+                        SELECT reserved_by FROM items WHERE id = %s
+                    """, (item_id,))
+                    row = cursor.fetchone()
+
+                    if not row:
+                        return {"success": False, "error": "Item not found"}
+
+                    if row["reserved_by"] is not None:
+                        return {"success": False, "error": "Already reserved"}
+
+                    cursor.execute("""
+                        UPDATE items
+                        SET reserved_by = %s
+                        WHERE id = %s
+                    """, (user_id, item_id))
+
+                    conn.commit()
+                    return {"success": True}
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def cancel_reservation(self, item_id):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+
+                    cursor.execute("""
+                        UPDATE items
+                        SET reserved_by = NULL
+                        WHERE id = %s
+                    """, (item_id,))
+
+                    conn.commit()
+                    return {"success": True}
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def complete_reservation(self, item_id):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+
+                    # remove item permanently after successful receive
+                    cursor.execute("""
+                        DELETE FROM items
+                        WHERE id = %s
+                    """, (item_id,))
+
+                    conn.commit()
+                    return {"success": True}
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
