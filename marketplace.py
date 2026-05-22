@@ -304,7 +304,10 @@ def render_marketplace_page():
                                 # 🔒 lock item immediately so it disappears from marketplace
                                 db.reserve_item(item_id=item_id, user_id=current_user_id)
 
-                                st.success("🛒 Added to your cart! Waiting for seller response.")
+                                # 🛒 trigger cart popup
+                                st.session_state["show_cart_popup"] = True
+                                st.session_state["cart_popup_item"] = item.get("item_name", "Item")
+
                                 st.rerun()
                             elif result.get("error") == "duplicate":
                                 st.warning("⚠️ You already have a pending request for this item.")

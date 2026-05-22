@@ -189,12 +189,22 @@ def get_transaction_status(item):
         return "waiting_seller"
     else:
         return "active"
+    
+def normalize_page(page):
+    return page.replace("🔔", "").strip()
+
+
+# ADD IT HERE 👇
+page_key = st.session_state.current_page
+
+if "Notifications" in page_key:
+    page_key = "Notifications"
+else:
+    page_key = page_key.split("  ", 1)[-1].strip()
 
 
 @st.dialog("🔔 New Item Requests!")
 def show_login_notifications(notifs):
-    st.markdown("##### Here are the pending requests for your listings:")
-    st.markdown("---")
     
     # Render up to 3 unread notifications
     for n in notifs[:3]:
@@ -206,8 +216,35 @@ def show_login_notifications(notifs):
         """, unsafe_allow_html=True)
         
     st.markdown("---")
-    if st.button("Go to Notifications Hub", width="stretch", type="primary"):
-        st.session_state.current_page = "🔔  Notifications"
+    if st.button("🔔 Go to Notifications Hub", width="stretch", type="primary"):
+        st.session_state.current_page = "Notifications"
+        st.rerun()
+
+@st.dialog("🛒 Item Added to Cart!")
+def show_cart_popup(item_name=None):
+
+    st.markdown(f"""
+    <div style="
+        padding:16px;
+        border-left:4px solid #16a34a;
+        background:#f0fdf4;
+        border-radius:10px;
+        margin-bottom:15px;
+    ">
+        <p style="margin:0;font-weight:700;color:#166534;font-size:1rem;">
+            ✅ Successfully added to cart
+        </p>
+
+        <p style="margin-top:8px;color:#404040;font-size:.92rem;">
+            {item_name if item_name else "This item"} has been added to your cart.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("You can review it anytime in your cart section.")
+
+    if st.button("🧾 Go to My Cart", width="stretch", type="primary"):
+        st.session_state.current_page = "My Cart"
         st.rerun()
 
 
@@ -239,54 +276,53 @@ with st.sidebar:
         notif_label = NOTIF_BASE + (f" ({unread})" if unread else "")
 
         NAV_OPTIONS = [
-            "🛒  Marketplace",
-            "🧾  My Cart",
-            "📜  Past Transactions",
-            "📦  Upload Item",
-            "🧾  My Items",
-            "🛡️  Trust & Safety",
-            "📊  Dashboard",
-            notif_label,
-        ]
-
-        # Keep current_page in sync if the label changed (unread count ticked)
-        if st.session_state.current_page.startswith(NOTIF_BASE):
-            st.session_state.current_page = NOTIF_BASE
+        ("🛒  Marketplace", "Marketplace"),
+        ("🧾  My Cart", "My Cart"),
+        ("📜  Past Transactions", "Past Transactions"),
+        ("📦  Upload Item", "Upload Item"),
+        ("🧾  My Items", "My Items"),
+        ("🛡️  Trust & Safety", "Trust & Safety"),
+        ("📊  Dashboard", "Dashboard"),
+        (f"🔔  Notifications ({unread})" if unread else "🔔  Notifications", "Notifications"),
+    ]
 
         selection = st.radio(
-            "Navigation", NAV_OPTIONS,
-            index=NAV_OPTIONS.index(st.session_state.current_page)
-                  if st.session_state.current_page in NAV_OPTIONS else 0,
+            "Navigation",
+            NAV_OPTIONS,
+            index=next(
+                (
+                    i for i, (_, p) in enumerate(NAV_OPTIONS)
+                    if p == page_key
+                ),
+                0
+            ),
+            format_func=lambda x: x[0],
             label_visibility="collapsed",
         )
-        if selection != st.session_state.current_page:
-            st.session_state.current_page = selection
+
+        label, page = selection
+
+        if st.session_state.current_page != page:
+            st.session_state.current_page = page
             st.rerun()
 
         st.markdown("---")
+
         if st.button("🚪 Logout", width="stretch"):
+
+            # remove remember-me cookie
             if "ematch_user" in controller.getAll():
                 try:
                     controller.remove("ematch_user")
                 except KeyError:
                     pass
-            
+
+            # clear session
             st.session_state.clear()
+
             st.rerun()
 
 
-# ── MAIN ROUTER ───────────────────────────────────────────────────────────────
-# Extract base string from page labels
-page_key = st.session_state.current_page
-
-if NOTIF_BASE in page_key:
-    page_key = "Notifications"
-else:
-    page_key = page_key.split("  ", 1)[-1].strip()
-
-# final safety (optional but clean)
-if page_key.startswith("Notifications"):
-    page_key = "Notifications"
 
 if not st.session_state.logged_in:
     # ── INTERCEPT VIEW: ACTIVE OTP VERIFICATION ENGINE ────────────────────────
@@ -443,6 +479,45 @@ if not st.session_state.logged_in:
 else:
     # ── LOGGED-IN PAGES ───────────────────────────────────────────────────────
     user_id = st.session_state.get("user_id")
+
+    # ── CART POPUP NOTIFICATION ─────────────────────────────────────────────
+    if st.session_state.get("show_cart_popup"):
+
+        item_name = st.session_state.get("cart_popup_item", "Item")
+
+        @st.dialog("🛒 Item Added to Cart")
+        def cart_popup():
+            st.success(f"✅ '{item_name}' has been added to your cart!")
+
+            st.markdown("""
+            <div style="
+                padding:14px;
+                border-radius:12px;
+                background:#f0fdf4;
+                border:1px solid #bbf7d0;
+                margin-top:10px;
+            ">
+                <p style="margin:0;color:#166534;font-weight:600;">
+                    You can now view and manage this request from the
+                    <strong>🧾 My Cart</strong> section in the sidebar.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if st.button("🧾 Go to My Cart", width="stretch", type="primary"):
+                    st.session_state.current_page = "My Cart"
+                    st.session_state.show_cart_popup = False
+                    st.rerun()
+
+            with col2:
+                if st.button("Close", width="stretch"):
+                    st.session_state.show_cart_popup = False
+                    st.rerun()
+
+        cart_popup()
 
     # 🚀 POP-UP TRIGGER ENGINE: Fires exactly once following successful login view routing
     if "has_shown_popup" not in st.session_state:

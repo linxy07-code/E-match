@@ -840,8 +840,10 @@ class EcoMatchDB:
 
                     cursor.execute("""
                         UPDATE items
-                        SET reserved_by = NULL
-                        WHERE id = %s
+                        SET reserved_by = NULL,
+                            is_reserved = 0,
+                            status = 'available'
+                        WHERE item_id = %s
                     """, (item_id,))
 
                     conn.commit()
@@ -930,9 +932,9 @@ class EcoMatchDB:
                         cursor.execute("""
                             INSERT INTO past_transactions (
                                 item_id, buyer_id, seller_id,
-                                item_name, price, listing_type
+                                item_name, price, listing_type, completed_at
                             )
-                            VALUES (%s, %s, %s, %s, %s, %s)
+                            VALUES (%s, %s, %s, %s, %s, %s, NOW())
                         """, (
                             item["id"],
                             item["buyer_id"],
@@ -944,11 +946,13 @@ class EcoMatchDB:
 
                         cursor.execute("""
                             UPDATE items
-                            SET status = 'completed'
+                            SET status = 'completed',
+                                reserved_by = NULL,
+                                is_active = 0
                             WHERE id = %s
                         """, (item_id,))
 
                         conn.commit()
 
         except Exception as e:
-            print("Transaction check error:", e)
+            st.error(f"Transaction error: {e}")
