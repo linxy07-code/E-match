@@ -14,11 +14,14 @@ from upload import render_upload_page
 from marketplace import render_marketplace_page
 from dashboard import render_dashboard_page  # Clean dynamic analytical routing
 from mycart import render_cart_page
+from pasttransaction import render_past_transaction_page
 
 from datetime import datetime
 from database import EcoMatchDB
 import time
 from streamlit_cookies_controller import CookieController
+
+NOTIF_BASE = "🔔  Notifications"
 
 # ── INITIALIZATION ────────────────────────────────────────────────────────────
 db         = EcoMatchDB()
@@ -174,6 +177,19 @@ def _lt_badge(listing_type, price=None):
         label, css = "🆓 Free", "lt-free"
     return f'<span class="lt-badge {css}">{label}</span>'
 
+def get_transaction_status(item):
+    seller = item.get("seller_shipped", False)
+    buyer  = item.get("buyer_received", False)
+
+    if seller and buyer:
+        return "completed"
+    elif seller and not buyer:
+        return "waiting_buyer"
+    elif not seller and buyer:
+        return "waiting_seller"
+    else:
+        return "active"
+
 
 @st.dialog("🔔 New Item Requests!")
 def show_login_notifications(notifs):
@@ -220,19 +236,22 @@ with st.sidebar:
         </div>
         """, unsafe_allow_html=True)
 
+        notif_label = NOTIF_BASE + (f" ({unread})" if unread else "")
+
         NAV_OPTIONS = [
             "🛒  Marketplace",
             "🧾  My Cart",
+            "📜  Past Transactions",
             "📦  Upload Item",
             "🧾  My Items",
             "🛡️  Trust & Safety",
             "📊  Dashboard",
-            f"🔔  Notifications" + (f" ({unread})" if unread else ""),
+            notif_label,
         ]
 
         # Keep current_page in sync if the label changed (unread count ticked)
-        if st.session_state.current_page not in NAV_OPTIONS and "Notifications" in st.session_state.current_page:
-            st.session_state.current_page = NAV_OPTIONS[6]
+        if st.session_state.current_page.startswith(NOTIF_BASE):
+            st.session_state.current_page = NOTIF_BASE
 
         selection = st.radio(
             "Navigation", NAV_OPTIONS,
@@ -258,9 +277,14 @@ with st.sidebar:
 
 # ── MAIN ROUTER ───────────────────────────────────────────────────────────────
 # Extract base string from page labels
-page_key = st.session_state.current_page.strip().split("  ", 1)[-1]
+page_key = st.session_state.current_page
 
-# FIXED: Ensure any dynamic text like "Notifications (3)" safely maps back to "Notifications"
+if NOTIF_BASE in page_key:
+    page_key = "Notifications"
+else:
+    page_key = page_key.split("  ", 1)[-1].strip()
+
+# final safety (optional but clean)
 if page_key.startswith("Notifications"):
     page_key = "Notifications"
 
@@ -516,28 +540,55 @@ else:
 
                 with info_col:
                     st.markdown(f"""
-<div class="my-item-card">
-    <p class="my-item-title">{item['item_name']} {badge}</p>
-    <div class="my-item-row">🏷️ <strong>Category:</strong> {item.get('category','—')}</div>
-    <div class="my-item-row">📍 <strong>Region:</strong> {item.get('region','—')}</div>
-    <div class="my-item-row">🔍 <strong>Condition:</strong> {item.get('condition','—')}</div>
-    <div class="my-item-row">📦 <strong>Quantity:</strong> {item.get('quantity', 1)}</div>
-    {price_row}
-    {expiry_row}
-    {desc_block}
-</div>
-""", unsafe_allow_html=True)
+                <div class="my-item-card">
+                    <p class="my-item-title">{item['item_name']} {badge}</p>
+                    <div class="my-item-row">🏷️ <strong>Category:</strong> {item.get('category','—')}</div>
+                    <div class="my-item-row">📍 <strong>Region:</strong> {item.get('region','—')}</div>
+                    <div class="my-item-row">🔍 <strong>Condition:</strong> {item.get('condition','—')}</div>
+                    <div class="my-item-row">📦 <strong>Quantity:</strong> {item.get('quantity', 1)}</div>
+                    {price_row}
+                    {expiry_row}
+                    {desc_block}
+                </div>
+                """, unsafe_allow_html=True)
 
-                    if st.button("🗑️ Delete listing", key=f"del_{item['item_id']}", width="stretch"):
-                        result = db.delete_item(item["item_id"], user_id)
-                        if result["success"]:
-                            st.success("Listing deleted.")
-                            st.rerun()
-                        else:
-                            st.error(f"Could not delete: {result.get('error')}")
+                    # ✅ 🔥 PUT STATUS CARD HERE (NEW PART)
+                    status = get_transaction_status(item)
 
-                st.markdown("<br>", unsafe_allow_html=True)
+                    if status == "waiting_buyer":
+                        st.markdown("""
+                        <div style="background:#fff7ed;padding:10px;border-radius:10px;
+                        border:1px solid #fdba74;color:#9a3412;font-weight:600;">
+                        ⏳ Waiting for buyer to confirm transaction
+                        </div>
+                        """, unsafe_allow_html=True)
 
+                    elif status == "waiting_seller":
+                        st.markdown("""
+                        <div style="background:#eff6ff;padding:10px;border-radius:10px;
+                        border:1px solid #93c5fd;color:#1e3a8a;font-weight:600;">
+                        ⏳ Waiting for seller to ship item
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    # 🔽 THEN BUTTONS GO HERE
+                    btn_col1, btn_col2 = st.columns(2)
+
+                    with btn_col2:
+                        if st.button("📦 Shipped / Sent Out", key=f"ship_{item['item_id']}"):
+
+                            # 1. mark seller shipped
+                            result = db.mark_item_shipped(item["item_id"])
+
+                            if result.get("success"):
+
+                                # 2. complete transaction check
+
+                                st.success("Item marked as shipped.")
+                                st.rerun()
+
+                            else:
+                                st.error(f"Could not update: {result.get('error')}")
     # ── Notifications ─────────────────────────────────────────────────────────
     elif page_key == "Notifications":
         st.markdown(
@@ -583,6 +634,10 @@ else:
     # ── Trust & Safety ────────────────────────────────────────────────────────
     elif page_key == "Trust & Safety":
         render_trust_safety_page(db, user_id)
+
+    # ── Past Transaction ────────────────────────────────────────────────────────
+    elif page_key == "Past Transactions":
+        render_past_transaction_page(db, user_id)
 
     # ── Dashboard (Dynamic Engine Injection Routing Target) ───────────────────
     elif page_key == "Dashboard":

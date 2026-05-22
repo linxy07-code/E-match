@@ -58,33 +58,45 @@ def render_cart_page():
 💰 **Price:** {"RM " + str(item['price']) if item.get("price") else "Free / Exchange"}
             """)
 
-            # ── BUTTONS ─────────────────────────────
-            b1, b2 = st.columns(2)
+            # ── BUTTONS / STATUS ─────────────────────────────
 
-            # ✅ RECEIVED BUTTON
-            with b1:
+            # ── TRANSACTION STATUS / BUTTONS ─────────────────────────────
 
-                if st.button(
-                    "✅ Received Item",
-                    key=f"received_{item['item_id']}"
-                ):
+            item_id = item["item_id"]
 
-                    db.complete_reservation(item["item_id"])
+            # initialize temp state if not exists
+            if f"received_clicked_{item_id}" not in st.session_state:
+                st.session_state[f"received_clicked_{item_id}"] = False
 
-                    st.success("Item marked as received!")
-                    st.rerun()
+            # ── AFTER CLICK STATE ─────────────────────────────
+            if st.session_state[f"received_clicked_{item_id}"]:
 
-            # ❌ CANCEL BUTTON
-            with b2:
+                st.info("⏳ Waiting for seller to confirm transaction.")
 
-                if st.button(
-                    "❌ Cancel Reservation",
-                    key=f"cancel_{item['item_id']}"
-                ):
+            # ── NORMAL STATE ─────────────────────────────
+            else:
 
-                    db.cancel_reservation(item["item_id"])
+                b1, b2 = st.columns(2)
 
-                    st.warning("Reservation cancelled.")
-                    st.rerun()
+                # ❌ CANCEL BUTTON
+                with b1:
+                    if st.button(
+                        "❌ Cancel Reservation",
+                        key=f"cancel_{item_id}"
+                    ):
+                        db.cancel_reservation(item_id)
+                        st.warning("Reservation cancelled.")
+                        st.rerun()
 
-        st.markdown("---")
+                # ✅ RECEIVED BUTTON
+                with b2:
+                    if st.button(
+                        "✅ Received Item",
+                        key=f"received_{item_id}"
+                    ):
+                        db.mark_item_received(item_id)
+
+                        # store temporary UI state
+                        st.session_state[f"received_clicked_{item_id}"] = True
+
+                        st.rerun()
