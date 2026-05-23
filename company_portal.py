@@ -647,7 +647,7 @@ def render_company_marketplace(db, user_id):
             raw_name     = html.escape(str(item.get("item_name", "")))
             company_name = html.escape(str(item.get("company_name") or item.get("seller_name") or "—"))
             price_row    = f"<div class='co-mp-row'>💰 <strong>Price:</strong> RM {float(price):.2f}</div>" if (listing_type=="sell" and price) else ""
-            phone_row    = f"<div class='co-mp-row'>📞 <strong>Contact:</strong> {html.escape(str(item.get('phone_number','—')))}</div>" if item.get("phone_number") else ""
+           
 
             with cols_cards[col_idx]:
                 img_url = item.get("image_path")
@@ -665,7 +665,6 @@ def render_company_marketplace(db, user_id):
                     <div class="co-mp-row">🏷️ <strong>Category:</strong> {item.get('category','—')}</div>
                     <div class="co-mp-row">📦 <strong>Qty:</strong> {item.get('quantity',1)}</div>
                     {price_row}
-                    {phone_row}
                 </div>
                 """, unsafe_allow_html=True)
 
