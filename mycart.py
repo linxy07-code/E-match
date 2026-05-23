@@ -1,3 +1,4 @@
+# mycart.py
 import streamlit as st
 from database import EcoMatchDB
 
@@ -6,43 +7,42 @@ db = EcoMatchDB()
 
 def render_cart_page():
     st.markdown(
-        """
-        <div class="page-header">
+        """<div class="page-header">
             <h1>🛒 My Cart</h1>
-            <p>Items you have reserved</p>
-        </div>
-        """,
+            <p>Items you have reserved from the marketplace</p>
+        </div>""",
         unsafe_allow_html=True,
     )
 
-    user_id = st.session_state.get("user_id")
-
+    user_id  = st.session_state.get("user_id")
     db_result = db.get_cart_items(user_id)
-    items = db_result.get("items", [])
+    items    = db_result.get("items", [])
 
     if not items:
-        st.info("Your cart is empty.")
+        st.info("Your cart is empty. Browse the **Marketplace** to reserve items.")
         return
 
     st.caption(f"{len(items)} reserved item(s)")
 
     for item in items:
-
         col1, col2 = st.columns([1, 2])
 
-        # ── IMAGE COLUMN ─────────────────────────────
         with col1:
-
             if item.get("image_path"):
-                st.image(
-                    item["image_path"],
-                    use_container_width=True
-                )
+                st.image(item["image_path"], use_container_width=True)
             else:
-                st.markdown("📦 No Image")
+                st.markdown(
+                    "<div style='height:140px;background:#f0fdf4;border-radius:10px;"
+                    "display:flex;align-items:center;justify-content:center;"
+                    "font-size:2.5rem'>📦</div>",
+                    unsafe_allow_html=True,
+                )
 
-        # ── INFO COLUMN ──────────────────────────────
         with col2:
+            price_display   = f"RM {item['price']}" if item.get("price") else "Free / Exchange"
+            phone_display   = f"\n📞 **Contact:** {item['phone_number']}" if item.get("phone_number") else ""
+            seller_shipped  = item.get("seller_shipped", False)
+            buyer_received  = item.get("buyer_received", False)
 
             st.markdown(f"""
 ### {item['item_name']}
@@ -51,52 +51,44 @@ def render_cart_page():
 📍 **Region:** {item.get('region', '—')}  
 🏷️ **Category:** {item.get('category', '—')}  
 🔍 **Condition:** {item.get('condition', '—')}  
+💰 **Price:** {price_display}{phone_display}  
 
-💬 **Description:**  
-{item.get('description', 'No description provided')}
-
-💰 **Price:** {"RM " + str(item['price']) if item.get("price") else "Free / Exchange"}
+💬 **Description:** {item.get('description', 'No description provided')}
             """)
-
-            # ── BUTTONS / STATUS ─────────────────────────────
-
-            # ── TRANSACTION STATUS / BUTTONS ─────────────────────────────
 
             item_id = item["item_id"]
 
-            # initialize temp state if not exists
-            if f"received_clicked_{item_id}" not in st.session_state:
-                st.session_state[f"received_clicked_{item_id}"] = False
+            # ── Show shipping status ─────────────────────────────────────────
+            if seller_shipped and not buyer_received:
+                st.success("📦 Seller has shipped your item! Please confirm receipt below.")
+            elif not seller_shipped:
+                st.info("⏳ Waiting for seller to ship the item.")
 
-            # ── AFTER CLICK STATE ─────────────────────────────
-            if st.session_state[f"received_clicked_{item_id}"]:
+            received_key = f"received_clicked_{item_id}"
+            if received_key not in st.session_state:
+                st.session_state[received_key] = False
 
-                st.info("⏳ Waiting for seller to confirm transaction.")
-
-            # ── NORMAL STATE ─────────────────────────────
+            if st.session_state[received_key]:
+                st.info("✅ Receipt confirmed. Waiting for the transaction to be fully closed.")
             else:
-
                 b1, b2 = st.columns(2)
 
-                # ❌ CANCEL BUTTON
                 with b1:
-                    if st.button(
-                        "❌ Cancel Reservation",
-                        key=f"cancel_{item_id}"
-                    ):
+                    if st.button("❌ Cancel Reservation", key=f"cancel_{item_id}"):
                         db.cancel_reservation(item_id)
                         st.warning("Reservation cancelled.")
                         st.rerun()
 
-                # ✅ RECEIVED BUTTON
                 with b2:
-                    if st.button(
-                        "✅ Received Item",
-                        key=f"received_{item_id}"
-                    ):
-                        db.mark_item_received(item_id)
+                    if st.button("✅ Received Item", key=f"received_{item_id}"):
+                        result = db.mark_item_received(item_id)
+                        if result.get("success"):
+                            st.session_state[received_key] = True
+                            # Trigger the transaction complete congratulations dialog
+                            st.session_state["show_txn_complete_dialog"] = True
+                            st.session_state["txn_complete_item"] = item.get("item_name", "item")
+                            st.rerun()
+                        else:
+                            st.error(f"Could not update: {result.get('error')}")
 
-                        # store temporary UI state
-                        st.session_state[f"received_clicked_{item_id}"] = True
-
-                        st.rerun()
+        st.markdown("---")
