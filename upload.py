@@ -126,14 +126,14 @@ def render_upload_page():
             help="Optional: Let buyers contact you directly for pickup arrangements."
         )
 
-        description = st.text_area("Description", key="upload_description")
+        
 
         has_expiry  = st.checkbox("This item has an expiry date", key="upload_has_expiry")
         expiry_date = (
             st.date_input("Expiry Date", key="upload_expiry_date")
             if has_expiry else None
         )
-
+        
         st.markdown("---")
         st.markdown("#### 💰 Listing Type")
 
@@ -149,6 +149,35 @@ def render_upload_page():
             key="upload_listing_type_label"
         )
         listing_type = LISTING_TYPE_OPTIONS[listing_type_label]
+        
+        exchange_offer = None
+        exchange_want = None
+        description = ""
+
+        if listing_type == "exchange":
+            st.markdown("#### 🔄 Exchange Details")
+
+            exchange_offer = st.text_area(
+                "Item I'm offering *",
+                key="upload_exchange_offer",
+                placeholder="What are you giving away?"
+            )
+
+            exchange_want = st.text_area(
+                "Item I want in return *",
+                key="upload_exchange_want",
+                placeholder="What do you want in exchange?"
+            )
+
+            # combine into ONE field for database
+            description = f"OFFER: {exchange_offer}\nWANT: {exchange_want}"
+
+        else:
+            description = st.text_area(
+                "Description",
+                key="upload_description"
+            )
+
 
         price = None
         if listing_type == "sell":

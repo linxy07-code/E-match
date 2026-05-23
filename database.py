@@ -334,21 +334,33 @@ class EcoMatchDB:
     # ── PERSONAL MARKETPLACE ITEMS ────────────────────────────────────────────
 
     def add_item(self, user_id, item_name, category, region, expiry_date=None,
-                 image_path=None, condition="Good", quantity=1, description="",
-                 listing_type="free", price=None, phone_number=None):
+             image_path=None, condition="Good", quantity=1, description="",
+             listing_type="free", price=None, phone_number=None,
+             exchange_offer=None, exchange_want=None):
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
                         INSERT INTO items
                             (user_id, item_name, category, region, condition, quantity,
-                             description, expiry_date, image_path, listing_type, price, phone_number)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                             description, expiry_date, image_path, listing_type, price,
+                             phone_number, exchange_offer, exchange_want)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     """, (
-                        user_id, item_name, category, region, condition, quantity,
-                        description, expiry_date, image_path, listing_type,
+                        user_id,
+                        item_name,
+                        category,
+                        region,
+                        condition,
+                        quantity,
+                        description,
+                        expiry_date,
+                        image_path,
+                        listing_type,
                         float(price) if price is not None else None,
                         phone_number,
+                        exchange_offer,
+                        exchange_want
                     ))
                     conn.commit()
                     return {"success": True}
@@ -374,6 +386,8 @@ class EcoMatchDB:
                             i.listing_type,
                             i.price,
                             i.phone_number,
+                            i.exchange_offer,
+                            i.exchange_want,
                             i.is_active,
                             i.created_at,
                             u.username    AS seller_name,
@@ -404,7 +418,7 @@ class EcoMatchDB:
                     cursor.execute("""
                         SELECT id AS item_id, item_name, category, region,
                                condition, quantity, description, expiry_date,
-                               image_path, listing_type, price, phone_number,
+                               image_path, listing_type, price, phone_number, exchange_offer, exchange_want,
                                seller_shipped, buyer_received, status, created_at
                         FROM items
                         WHERE user_id = %s AND is_active = 1
