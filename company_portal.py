@@ -11,6 +11,7 @@ import re
 from datetime import datetime, date
 import cloudinary
 import cloudinary.uploader
+import time
 
 
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
@@ -72,54 +73,245 @@ COMPANY_CSS = """
 <style>
 .co-header {
     background: linear-gradient(135deg, #1e3a5f 0%, #0d6efd 100%);
-    border-radius: 14px; padding: 32px 36px; margin-bottom: 28px;
+    border-radius: 14px;
+    padding: 32px 36px;
+    margin-bottom: 28px;
     box-shadow: 0 10px 30px rgba(0,0,0,.10);
 }
-.co-header h1 { font-family:'Fraunces',serif !important; font-size:2rem !important;
-                color:#fff !important; margin:0 0 6px !important; }
-.co-header p  { color:rgba(255,255,255,.75) !important; font-size:.95rem; margin:0; }
 
-.co-metric-row { display:flex; gap:16px; margin-bottom:24px; flex-wrap:wrap; }
-.co-metric-card {
-    flex:1; min-width:160px; background:white; border:1px solid #bfdbfe;
-    border-radius:14px; padding:20px 22px;
-    box-shadow:0 1px 3px rgba(0,0,0,.06); position:relative; overflow:hidden;
+.co-header h1 {
+    font-family:'Fraunces',serif !important;
+    font-size:2rem !important;
+    color:#fff !important;
+    margin:0 0 6px !important;
 }
+
+.co-header p {
+    color:rgba(255,255,255,.75) !important;
+    font-size:.95rem;
+    margin:0;
+}
+
+/* ── Metric Cards ───────────────────────────────────────────── */
+
+.co-metric-row {
+    display:flex;
+    gap:16px;
+    margin-bottom:24px;
+    flex-wrap:wrap;
+}
+
+.co-metric-card {
+    flex:1;
+    min-width:160px;
+    background:white;
+    border:1px solid #bfdbfe;
+    border-radius:14px;
+    padding:20px 22px;
+    box-shadow:0 1px 3px rgba(0,0,0,.06);
+    position:relative;
+    overflow:hidden;
+}
+
 .co-metric-card::before {
-    content:''; position:absolute; top:0; left:0; right:0; height:3px;
+    content:'';
+    position:absolute;
+    top:0;
+    left:0;
+    right:0;
+    height:3px;
     background:linear-gradient(90deg,#2563eb,#60a5fa);
 }
-.co-metric-value { font-family:'Fraunces',serif; font-size:1.9rem; font-weight:600;
-                   color:#1e3a5f; line-height:1; margin-bottom:4px; }
-.co-metric-label { font-size:.78rem; color:#6b7280; text-transform:uppercase; font-weight:600; }
+
+.co-metric-value {
+    font-family:'Fraunces',serif;
+    font-size:1.9rem;
+    font-weight:600;
+    color:#1e3a5f;
+    line-height:1;
+    margin-bottom:4px;
+}
+
+.co-metric-label {
+    font-size:.78rem;
+    color:#6b7280;
+    text-transform:uppercase;
+    font-weight:600;
+}
+
+/* ── Alert Boxes ───────────────────────────────────────────── */
 
 .co-alert-box {
-    background:#fff7ed; border:1px solid #fdba74; border-left:4px solid #f97316;
-    border-radius:10px; padding:14px 16px; margin-bottom:10px;
+    background:#fff7ed;
+    border:1px solid #fdba74;
+    border-left:4px solid #f97316;
+    border-radius:10px;
+    padding:14px 16px;
+    margin-bottom:10px;
 }
-.co-alert-title { font-weight:700; color:#9a3412; font-size:.9rem; margin:0 0 4px 0; }
-.co-alert-body  { font-size:.82rem; color:#7c3a1e; margin:0; }
+
+.co-alert-title {
+    font-weight:700;
+    color:#9a3412;
+    font-size:.9rem;
+    margin:0 0 4px 0;
+}
+
+.co-alert-body {
+    font-size:.82rem;
+    color:#7c3a1e;
+    margin:0;
+}
+
+/* ── Item Cards ───────────────────────────────────────────── */
 
 .co-item-card {
-    background:#fff; border-radius:14px; border:1px solid #bfdbfe;
-    box-shadow:0 1px 3px rgba(0,0,0,.06); padding:18px 20px; margin-bottom:8px;
+    background:#fff;
+    border-radius:14px;
+    border:1px solid #bfdbfe;
+    box-shadow:0 1px 3px rgba(0,0,0,.06);
+    padding:18px 20px;
+    margin-bottom:8px;
 }
-.co-item-title { font-family:'Fraunces',serif; font-size:1.1rem; font-weight:600;
-                 color:#1e3a5f; margin:0 0 8px 0; }
-.co-item-row   { font-size:.83rem; color:#374151; margin:3px 0; }
-.co-item-row strong { color:#1d4ed8; }
 
-.lt-badge { display:inline-block; font-size:.75rem; font-weight:700;
-            padding:3px 10px; border-radius:999px; margin-left:6px; }
-.lt-free     { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
-.lt-exchange { background:#ede9fe; color:#5b21b6; border:1px solid #c4b5fd; }
-.lt-sell     { background:#fef9c3; color:#854d0e; border:1px solid #fde68a; }
-.expiry-ok     { background:#dcfce7; color:#15803d; }
-.expiry-urgent { background:#fee2e2; color:#dc2626; }
-.mp-badge { display:inline-block; font-size:.75rem; font-weight:700;
-            padding:3px 10px; border-radius:999px; margin-right:4px; }
+.co-item-title {
+    font-family:'Fraunces',serif;
+    font-size:1.1rem;
+    font-weight:600;
+    color:#1e3a5f;
+    margin:0 0 8px 0;
+}
+
+.co-item-row {
+    font-size:.83rem;
+    color:#374151;
+    margin:3px 0;
+}
+
+.co-item-row strong {
+    color:#1d4ed8;
+}
+
+/* ── Listing Badges ───────────────────────────────────────── */
+
+.lt-badge {
+    display:inline-block;
+    font-size:.75rem;
+    font-weight:700;
+    padding:3px 10px;
+    border-radius:999px;
+    margin-left:6px;
+}
+
+.lt-free {
+    background:#dcfce7;
+    color:#15803d;
+    border:1px solid #bbf7d0;
+}
+
+.lt-exchange {
+    background:#ede9fe;
+    color:#5b21b6;
+    border:1px solid #c4b5fd;
+}
+
+.lt-sell {
+    background:#fef9c3;
+    color:#854d0e;
+    border:1px solid #fde68a;
+}
+
+.expiry-ok {
+    background:#dcfce7;
+    color:#15803d;
+}
+
+.expiry-urgent {
+    background:#fee2e2;
+    color:#dc2626;
+}
+
+.mp-badge {
+    display:inline-block;
+    font-size:.75rem;
+    font-weight:700;
+    padding:3px 10px;
+    border-radius:999px;
+    margin-right:4px;
+}
+
+/* ── Trust & Safety Shared Styles ───────────────────────── */
+
+.trust-ring-wrap {
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:24px;
+    background:white;
+    border-radius:14px;
+    border:1px solid #bfdbfe;
+    box-shadow:0 1px 3px rgba(0,0,0,.06);
+}
+
+.trust-score-num {
+    font-family:'Fraunces',serif;
+    font-size:3.5rem;
+    color:#1d4ed8;
+    font-weight:600;
+}
+
+.trust-score-denom {
+    font-size:1.2rem;
+    color:#6b7280;
+}
+
+.trust-label {
+    font-weight:700;
+    color:#2563eb;
+    margin-top:5px;
+}
+
+.trust-bar-bg {
+    height:10px;
+    border-radius:999px;
+    background:#dbeafe;
+    width:100%;
+    overflow:hidden;
+}
+
+.trust-bar-fill {
+    height:100%;
+    background:linear-gradient(90deg,#2563eb,#60a5fa);
+}
+
+.rule-row {
+    display:flex;
+    justify-content:space-between;
+    padding:10px 0;
+    border-bottom:1px solid #eff6ff;
+}
+
+.rule-impact-pos {
+    color:#2563eb;
+    font-weight:700;
+}
+
+.rule-impact-neg {
+    color:#dc2626;
+    font-weight:700;
+}
+
+.card {
+    background:#fff;
+    border-radius:14px;
+    border:1px solid #bfdbfe;
+    box-shadow:0 1px 3px rgba(0,0,0,.06);
+    padding:22px 24px;
+    margin-bottom:15px;
+}
 </style>
 """
+
 
 
 # ── 1. COMPANY DASHBOARD ──────────────────────────────────────────────────────
@@ -593,3 +785,149 @@ def render_company_past_transactions(db, user_id):
             🕒 Completed: {t['completed_at']}
         </div>
         """, unsafe_allow_html=True)
+
+
+# ── 7. COMPANY TRUST & SAFETY ────────────────────────────────────────────────
+
+def render_trust_safety_page(db, user_id):
+
+    st.markdown("""
+    <div class="co-header">
+        <h1>🛡️ Trust & Safety</h1>
+        <p>Your reputation is your credibility on E-match</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── LIVE TRUST SCORE ─────────────────────────────────────────────
+    user_data = db.get_user_by_id(user_id)
+
+    if user_data:
+        st.session_state.trust_score = float(
+            user_data.get("trust_score", 10.0)
+        )
+
+    trust_score = st.session_state.get("trust_score", 10.0)
+
+    trust_pct = int(
+        (max(0.0, min(10.0, trust_score)) / 10.0) * 100
+    )
+
+    # ── SCORE + RULES LAYOUT ─────────────────────────────────────────
+    col_score, col_rules = st.columns([1, 2])
+
+    with col_score:
+        if trust_score >= 8.0:
+            standing = "Excellent Standing"
+        elif trust_score >= 5.0:
+            standing = "Good Standing"
+        else:
+            standing = "Needs Improvement"
+
+        # We build and immediately render it to prevent any accidental double-calls
+        st.markdown(f"""
+        <div class="trust-ring-wrap">
+            <div style="text-align:center; margin-top:12px;">
+                <span class="trust-score-num">{trust_score:.1f}</span>
+                    <span class="trust-score-denom"> / 10</span>
+        </div>
+            <div class="trust-label" style="text-align:center;">
+                {standing}
+            </div>
+            <div class="trust-bar-bg" style="margin-top:14px;">
+                <div class="trust-bar-fill" style="width:{trust_pct}%;"></div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_rules:
+
+        st.markdown("""
+        <div class='card'>
+            <p style='font-weight:700;
+            border-bottom:1px solid #dcfce7;
+            padding-bottom:10px'>
+            📋 Company Trust Rules
+            </p>
+        """, unsafe_allow_html=True)
+
+        rules = [
+            ("Successful match completed", "+1.0", True),
+            ("Item listed with accurate info", "+0.5", True),
+            ("Uploaded a clear item photo", "+0.5", True),
+            ("Fast response to claim request", "+0.5", True),
+            ("Misconduct reported & verified", "−3.0", False),
+            ("Listing an expired item", "−1.0", False),
+            ("No-show for pickup", "−2.0", False),
+        ]
+
+        for rule, impact, pos in rules:
+
+            cls = "rule-impact-pos" if pos else "rule-impact-neg"
+
+            st.markdown(f"""
+            <div class="rule-row">
+                <span style="font-size:.875rem;color:#404040">
+                    {rule}
+                </span>
+                <span class="{cls}">
+                    {impact}
+                </span>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── REPORT SECTION ───────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 🚨 Report Misconduct")
+
+    r1, r2 = st.columns(2)
+
+    with r1:
+        report_user_input = st.text_input(
+            "Company Username to report",
+            placeholder="Enter username",
+            key="rep_username"
+        )
+
+    with r2:
+        report_reason_input = st.selectbox(
+            "Reason",
+            [
+                "Fake listing",
+                "Fraudulent activity",
+                "Inappropriate behaviour",
+                "No delivery / pickup issue",
+                "Other"
+            ],
+            key="rep_reason"
+        )
+
+    report_details_input = st.text_area(
+        "Additional details (optional)",
+        placeholder="Describe what happened…",
+        height=90,
+        key="rep_details"
+    )
+
+    if st.button("Submit Report", key="btn_report", use_container_width=True):
+
+        if not report_user_input.strip():
+            st.warning("⚠️ Please provide a username to file this report.")
+        else:
+            report_payload = {
+                "reporter_id": user_id,
+                "reported_username": report_user_input.strip(),
+                "reason": report_reason_input,
+                "details": report_details_input,
+                "created_at": datetime.now().isoformat()
+            }
+
+            db_res = db.create_misconduct_report(report_payload)
+
+            if db_res.get("success"):
+                st.success("✅ Report submitted successfully.")
+                time.sleep(1.0)
+                st.rerun()
+            else:
+                st.error(f"❌ Could not submit report: {db_res.get('error', 'Unknown Error')}")

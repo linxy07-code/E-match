@@ -12,6 +12,7 @@ from upload import render_upload_page
 from marketplace import render_marketplace_page
 from dashboard import render_dashboard_page
 from mycart import render_cart_page
+from company_portal import render_trust_safety_page
 from pasttransaction import render_past_transaction_page
 
 # Company portal pages
@@ -22,6 +23,7 @@ from company_portal import (
     render_company_marketplace,
     render_company_cart,
     render_company_past_transactions,
+    render_trust_safety_page
 )
 
 from datetime import datetime
@@ -318,6 +320,7 @@ with st.sidebar:
                 ("📦  Upload Inventory",      "Upload Inventory"),
                 ("🗂️  My Inventory",          "My Inventory"),
                 ("📊  Company Dashboard",     "Company Dashboard"),
+                ("🛡️  Trust & Safety",        "Company Trust & Safety"),
                 (notif_label,                 "Notifications"),
             ]
         else:
@@ -771,6 +774,9 @@ else:
 
         elif page_key == "Company Transactions":
             render_company_past_transactions(db, user_id)
+
+        elif page_key == "Company Trust & Safety":
+            render_trust_safety_page(db, user_id)
 
         elif page_key == "Notifications":
             st.markdown(
