@@ -219,7 +219,21 @@ def render_marketplace_page():
 
             # ── 3. SANITIZE CONTENT OUTPUTS FOR DISPLAY ───────────────────────
             item_name_safe    = html.escape(str(item.get('item_name', '')))
-            description_clean = html.escape(raw_desc)
+            raw_desc_clean = html.escape(raw_desc)
+
+            item_offer = None
+            item_want = None
+
+            if listing_type == "exchange":
+                offer_match = re.search(r"OFFER:\s*(.*)", raw_desc, re.IGNORECASE)
+                want_match  = re.search(r"WANT:\s*(.*)", raw_desc, re.IGNORECASE)
+
+                item_offer = offer_match.group(1).strip() if offer_match else ""
+                item_want  = want_match.group(1).strip() if want_match else ""
+
+                description_clean = ""  # we won’t use normal description display for exchange
+            else:
+                description_clean = raw_desc_clean
             seller_name_clean = html.escape(raw_seller)
 
             exp_cls, exp_label = expiry_badge(item.get("expiry_date"))
@@ -263,8 +277,17 @@ def render_marketplace_page():
                     <div class="mp-card-row">🔍 <strong>Condition:</strong> {condition}</div>
                     {price_row}
                     <p class="mp-card-seller">👤 Listed by <strong>{seller_name_clean}</strong> · ⭐ {trust_str}</p>
-                    <div class="mp-card-desc">{desc_inner_html}</div>
-                </div>
+                    <div class="mp-card-desc">
+                    {
+                        (
+                            f"<div>📤 <strong>Item to give:</strong> {html.escape(item_offer or '')}</div>"
+                            f"<div>📥 <strong>Item to receive:</strong> {html.escape(item_want or '')}</div>"
+                        )
+                        if listing_type == "exchange" 
+                        else desc_inner_html
+                    }
+                    </div>
+                 </div>
                 """
                 st.markdown(full_card_html, unsafe_allow_html=True) # 🚀 Keep ONLY this line, aligned with full_card_html above!
                 

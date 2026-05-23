@@ -337,6 +337,7 @@ class EcoMatchDB:
              image_path=None, condition="Good", quantity=1, description="",
              listing_type="free", price=None, phone_number=None,
              exchange_offer=None, exchange_want=None):
+
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -344,8 +345,8 @@ class EcoMatchDB:
                         INSERT INTO items
                             (user_id, item_name, category, region, condition, quantity,
                              description, expiry_date, image_path, listing_type, price,
-                             phone_number, exchange_offer, exchange_want)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                             phone_number)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     """, (
                         user_id,
                         item_name,
@@ -358,12 +359,11 @@ class EcoMatchDB:
                         image_path,
                         listing_type,
                         float(price) if price is not None else None,
-                        phone_number,
-                        exchange_offer,
-                        exchange_want
+                        phone_number
                     ))
                     conn.commit()
                     return {"success": True}
+
         except Exception as e:
             return {"success": False, "error": str(e)}
 
