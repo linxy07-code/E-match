@@ -918,6 +918,48 @@ class EcoMatchDB:
                     return {"success": True, "items": [dict(row) for row in cursor.fetchall()]}
         except Exception as e:
             return {"success": False, "error": str(e)}
+        
+    def delete_company_item(self, item_id, user_id):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+
+                    # Verify ownership first
+                    cursor.execute("""
+                        SELECT user_id
+                        FROM company_items
+                        WHERE id = %s
+                    """, (item_id,))
+
+                    row = cursor.fetchone()
+
+                    if not row:
+                        return {
+                            "success": False,
+                            "error": "Item not found"
+                        }
+
+                    if row["user_id"] != user_id:
+                        return {
+                            "success": False,
+                            "error": "Unauthorized"
+                        }
+
+                    # Delete item
+                    cursor.execute("""
+                        DELETE FROM company_items
+                        WHERE id = %s
+                    """, (item_id,))
+
+                    conn.commit()
+
+                    return {"success": True}
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
 
     def get_near_expiry_company_items(self, user_id, days=14):
         """Returns company items expiring within `days` days, for alerts."""

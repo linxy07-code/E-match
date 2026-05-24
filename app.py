@@ -723,7 +723,7 @@ else:
                                     st.error(f"Could not update: {result.get('error')}")
 
                         with col2:
-                            if st.button("❌ Cancel Listing", key=f"cancel_{item['item_id']}"):
+                            if st.button("❌ Delete Listing", key=f"cancel_{item['item_id']}"):
                                 result = db.delete_item(item["item_id"], user_id)
 
                                 if result.get("success"):

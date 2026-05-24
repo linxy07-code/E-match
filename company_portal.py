@@ -448,13 +448,31 @@ def render_company_inventory(db, user_id):
                 ⏳ Buyer confirmed — please ship the item
                 </div>""", unsafe_allow_html=True)
 
-            if st.button("📦 Mark as Shipped", key=f"co_ship_{item['item_id']}"):
-                result = db.mark_company_item_shipped(item["item_id"])
-                if result.get("success"):
-                    st.success("✅ Item marked as shipped.")
-                    st.rerun()
-                else:
-                    st.error(f"Could not update: {result.get('error')}")
+            # ── Action Buttons (Side by Side) ─────────────────────────────
+            btn1, btn2 = st.columns(2, gap="small")
+
+            with btn1:
+                if st.button("📦 Mark as Shipped", key=f"co_ship_{item['item_id']}", use_container_width=True):
+                    result = db.mark_company_item_shipped(item["item_id"])
+                    if result.get("success"):
+                        st.success("✅ Item marked as shipped.")
+                        st.rerun()
+                    else:
+                        st.error(f"Could not update: {result.get('error')}")
+
+            with btn2:
+                if st.button("🗑️ Delete Listing", key=f"co_delete_{item['item_id']}", use_container_width=True):
+
+                    confirm = db.delete_company_item(
+                        item["item_id"],
+                        st.session_state.user_id
+                    )
+
+                    if confirm.get("success"):
+                        st.success("🗑️ Listing deleted successfully.")
+                        st.rerun()
+                    else:
+                        st.error(f"Could not delete: {confirm.get('error')}")
 
 
 # ── 3. UPLOAD INVENTORY ───────────────────────────────────────────────────────
@@ -533,9 +551,20 @@ def render_company_upload(db, user_id):
 
     with col_side:
         st.markdown("### 🖼️ Product Image")
-        uploaded_file = st.file_uploader("Upload image",
-                                         type=list(ALLOWED_EXTENSIONS),
-                                         key="co_image")
+
+        uploaded_file = st.file_uploader(
+            "Upload image",
+            type=list(ALLOWED_EXTENSIONS),
+            key="co_image"
+        )
+
+        # ── IMAGE PREVIEW ─────────────────────────────
+        if uploaded_file:
+            st.image(
+                uploaded_file,
+                caption="Preview",
+                use_container_width=True
+            )
 
     if st.button("📤 Publish to Inventory", use_container_width=True):
         if not item_name:
