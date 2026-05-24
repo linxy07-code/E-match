@@ -710,14 +710,27 @@ else:
                             ⏳ Waiting for you to ship the item
                             </div>""", unsafe_allow_html=True)
 
-                        if st.button("📦 Shipped / Sent Out", key=f"ship_{item['item_id']}"):
-                            result = db.mark_item_shipped(item["item_id"])
-                            if result.get("success"):
-                                st.success("Item marked as shipped.")
-                                st.rerun()
-                            else:
-                                st.error(f"Could not update: {result.get('error')}")
+                        col1, col2 = st.columns(2)
 
+                        with col1:
+                            if st.button("📦 Shipped / Sent Out", key=f"ship_{item['item_id']}"):
+                                result = db.mark_item_shipped(item["item_id"])
+
+                                if result.get("success"):
+                                    st.success("Item marked as shipped.")
+                                    st.rerun()
+                                else:
+                                    st.error(f"Could not update: {result.get('error')}")
+
+                        with col2:
+                            if st.button("❌ Cancel Listing", key=f"cancel_{item['item_id']}"):
+                                result = db.delete_item(item["item_id"], user_id)
+
+                                if result.get("success"):
+                                    st.success("Listing cancelled successfully.")
+                                    st.rerun()
+                                else:
+                                    st.error(f"Could not cancel listing: {result.get('error')}")
         elif page_key == "Notifications":
             st.markdown(
                 '<div class="page-header"><h1>🔔 Notifications</h1>'
