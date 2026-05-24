@@ -568,6 +568,10 @@ else:
     user_id      = st.session_state.get("user_id")
     user_type    = st.session_state.get("user_type", "Personal")
 
+    # ── transaction popup tracking (ADD THIS) ────────────────────────────────────
+    if "completed_txn_ids" not in st.session_state:
+        st.session_state.completed_txn_ids = set()
+
     # ── TRANSACTION COMPLETE DIALOG ───────────────────────────────────────────
     if st.session_state.get("show_txn_complete_dialog"):
         show_transaction_complete_dialog(
@@ -697,6 +701,21 @@ else:
                         """, unsafe_allow_html=True)
 
                         status = get_transaction_status(item)
+                        item_id = item["item_id"]
+
+                        if status == "completed" and item_id not in st.session_state.completed_txn_ids:
+                            st.session_state.completed_txn_ids.add(item_id)
+
+                            # 🎉 UI effects
+                            st.balloons()
+                            st.toast("🎉 Transaction completed!", icon="✅")
+
+                            st.session_state.show_txn_complete_dialog = True
+                            st.session_state.txn_complete_item = item["item_name"]
+                        
+                            # 🗄️ UPDATE SUPABASE CLAIM TABLE HERE
+                            db.update_claim_status(item_id, "completed")
+                            
                         if status == "waiting_buyer":
                             st.markdown("""
                             <div style="background:#fff7ed;padding:10px;border-radius:10px;
@@ -707,7 +726,7 @@ else:
                             st.markdown("""
                             <div style="background:#eff6ff;padding:10px;border-radius:10px;
                             border:1px solid #93c5fd;color:#1e3a8a;font-weight:600;">
-                            ⏳ Waiting for you to ship the item
+                            ⏳ Waiting for you to confirm transaction
                             </div>""", unsafe_allow_html=True)
 
                         col1, col2 = st.columns(2)

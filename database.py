@@ -506,15 +506,25 @@ class EcoMatchDB:
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
+
+                    # 1. Clear reservation
                     cursor.execute("""
                         UPDATE items
                         SET reserved_by = NULL,
-                            buyer_id    = NULL,
-                            status      = 'active'
+                            buyer_id = NULL,
+                            status = 'active'
                         WHERE id = %s
                     """, (item_id,))
+
+                    # 2. IMPORTANT: remove pending claims for this item
+                    cursor.execute("""
+                        DELETE FROM claims
+                        WHERE item_id = %s AND status = 'pending'
+                    """, (item_id,))
+
                     conn.commit()
                     return {"success": True}
+
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -638,15 +648,13 @@ class EcoMatchDB:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def update_claim_status(self, claim_id, status):
-        try:
-            with self._get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("UPDATE claims SET status = %s WHERE id = %s", (status, claim_id))
-                    conn.commit()
-                    return {"success": True}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+    def update_claim_status(self, item_id, status):
+        return (
+            self.client.table("claim")
+            .update({"status": status})
+            .eq("item_id", item_id)
+            .execute()
+        )
 
     # ── NOTIFICATIONS ─────────────────────────────────────────────────────────
 
