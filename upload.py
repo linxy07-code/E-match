@@ -230,6 +230,8 @@ def render_upload_page():
                 listing_type = listing_type,
                 price        = price if listing_type == "sell" else None,
                 phone_number = phone_number.strip() if phone_number else None,
+                exchange_offer = exchange_offer,
+                exchange_want  = exchange_want
             )
             if result.get("success"):
                 st.session_state.upload_success_mode = True

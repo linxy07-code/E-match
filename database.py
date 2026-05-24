@@ -85,6 +85,8 @@ class EcoMatchDB:
                     ("price",          "NUMERIC(10, 2)"),
                     ("phone_number",   "TEXT"),
                     ("quantity",       "INTEGER DEFAULT 1"),
+                    ("exchange_offer", "TEXT"),
+                    ("exchange_want", "TEXT"),
                 ]:
                     cursor.execute("""
                         SELECT column_name FROM information_schema.columns
@@ -109,6 +111,8 @@ class EcoMatchDB:
                         listing_type   TEXT DEFAULT 'sell',
                         price          NUMERIC(10, 2),
                         phone_number   TEXT,
+                        exchange_offer TEXT,
+                        exchange_want TEXT,
                         is_active      INTEGER DEFAULT 1,
                         reserved_by    INTEGER REFERENCES users(id),
                         buyer_id       INTEGER REFERENCES users(id),
@@ -333,9 +337,10 @@ class EcoMatchDB:
 
     # ── PERSONAL MARKETPLACE ITEMS ────────────────────────────────────────────
 
-    def add_item(self, user_id, item_name, category, region, expiry_date=None,
-             image_path=None, condition="Good", quantity=1, description="",
-             listing_type="free", price=None, phone_number=None,
+    def add_item(self, user_id, item_name, category, region,
+             condition, quantity, expiry_date,
+             image_path, description,
+             listing_type, price, phone_number,
              exchange_offer=None, exchange_want=None):
 
         try:
@@ -345,8 +350,8 @@ class EcoMatchDB:
                         INSERT INTO items
                             (user_id, item_name, category, region, condition, quantity,
                              description, expiry_date, image_path, listing_type, price,
-                             phone_number)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                             phone_number, exchange_offer, exchange_want)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     """, (
                         user_id,
                         item_name,
@@ -359,7 +364,9 @@ class EcoMatchDB:
                         image_path,
                         listing_type,
                         float(price) if price is not None else None,
-                        phone_number
+                        phone_number,
+                        exchange_offer,
+                        exchange_want
                     ))
                     conn.commit()
                     return {"success": True}
