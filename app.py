@@ -10,7 +10,8 @@ from upload import render_upload_page
 from marketplace import render_marketplace_page
 from dashboard import render_dashboard_page
 from mycart import render_cart_page
-from pasttransaction import render_past_transaction_page
+from transaction import render_past_transaction_page
+from my_items import render_my_items_page
 
 from company_portal import (
     render_company_dashboard,
@@ -643,83 +644,12 @@ else:
             render_upload_page()
 
         elif page_key == "My Items":
-            st.markdown(
-                '<div class="page-header"><h1>🧾 My Uploads / Items</h1>'
-                "<p>All items you have posted to the marketplace</p></div>",
-                unsafe_allow_html=True,
+            render_my_items_page(
+                db=db,
+                user_id=user_id,
+                get_transaction_status=get_transaction_status,
+                _lt_badge=_lt_badge,
             )
-            items_res = db.get_user_items(user_id)
-            items     = items_res.get("items", [])
-            if not items:
-                st.info("You haven't posted any items yet. Go to **Upload Item** to get started!")
-            else:
-                st.caption(f"{len(items)} active listing(s)")
-                for item in items:
-                    lt    = item.get("listing_type") or "free"
-                    price = item.get("price")
-                    badge = _lt_badge(lt, price)
-                    price_row  = f"<div class='my-item-row'>💰 <strong>Price:</strong> RM {float(price):.2f}</div>" if lt=="sell" and price else ""
-                    phone_row  = f"<div class='my-item-row'>📞 <strong>Contact:</strong> {item['phone_number']}</div>" if item.get("phone_number") else ""
-                    exp        = item.get("expiry_date")
-                    expiry_row = f"<div class='my-item-row'>📅 <strong>Expires:</strong> {exp}</div>" if exp else ""
-                    desc       = item.get("description") or ""
-                    desc_block = f"<p class='my-item-desc'>{desc}</p>" if desc else ""
-
-                    img_col, info_col = st.columns([1, 2])
-                    with img_col:
-                        if item.get("image_path"):
-                            st.image(item["image_path"], use_container_width=True)
-                        else:
-                            st.markdown(
-                                "<div style='height:140px;background:#f0fdf4;border-radius:10px;"
-                                "display:flex;align-items:center;justify-content:center;"
-                                "color:#86efac;font-size:2.5rem'>📦</div>",
-                                unsafe_allow_html=True,
-                            )
-                    with info_col:
-                        st.markdown(f"""
-                        <div class="my-item-card">
-                            <p class="my-item-title">{item['item_name']} {badge}</p>
-                            <div class="my-item-row">🏷️ <strong>Category:</strong> {item.get('category','—')}</div>
-                            <div class="my-item-row">📍 <strong>Region:</strong> {item.get('region','—')}</div>
-                            <div class="my-item-row">🔍 <strong>Condition:</strong> {item.get('condition','—')}</div>
-                            <div class="my-item-row">📦 <strong>Quantity:</strong> {item.get('quantity',1)}</div>
-                            {price_row}{phone_row}{expiry_row}{desc_block}
-                        </div>""", unsafe_allow_html=True)
-
-                        status  = get_transaction_status(item)
-                        item_id = item["item_id"]
-
-                        if status == "waiting_buyer":
-                            st.markdown("""
-                            <div style="background:#fff7ed;padding:10px;border-radius:10px;
-                            border:1px solid #fdba74;color:#9a3412;font-weight:600;margin-bottom:8px;">
-                            ⏳ Waiting for buyer to confirm receipt
-                            </div>""", unsafe_allow_html=True)
-                        elif status == "waiting_seller":
-                            st.markdown("""
-                            <div style="background:#eff6ff;padding:10px;border-radius:10px;
-                            border:1px solid #93c5fd;color:#1e3a8a;font-weight:600;margin-bottom:8px;">
-                            ⏳ Waiting for you to ship the item
-                            </div>""", unsafe_allow_html=True)
-
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            if st.button("📦 Shipped / Sent Out", key=f"ship_{item_id}"):
-                                result = db.mark_item_shipped(item_id)
-                                if result.get("success"):
-                                    st.success("Item marked as shipped.")
-                                    st.rerun()
-                                else:
-                                    st.error(f"Could not update: {result.get('error')}")
-                        with col2:
-                            if st.button("🗑️ Delete Listing", key=f"del_{item_id}"):
-                                result = db.delete_item(item_id, user_id)
-                                if result.get("success"):
-                                    st.success("Listing deleted.")
-                                    st.rerun()
-                                else:
-                                    st.error(f"Could not delete: {result.get('error')}")
 
         elif page_key == "Notifications":
             _render_notifications()

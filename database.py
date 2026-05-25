@@ -218,6 +218,42 @@ class EcoMatchDB:
 
                 conn.commit()
 
+    # ── ADD THIS NEW HELPER INSIDE EcoMatchDB CLASS ─────────────────────────────
+
+    def _create_transaction_notifications(self, item):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+
+                    buyer_id = item["buyer_id"]
+                    seller_id = item["user_id"]
+                    item_name = item["item_name"]
+
+                    # Seller notification
+                    cursor.execute("""
+                        INSERT INTO notifications (user_id, title, body)
+                        VALUES (%s, %s, %s)
+                    """, (
+                        seller_id,
+                        "⏳ Transaction Update",
+                        f"Waiting for buyer to confirm transaction for '{item_name}'"
+                    ))
+
+                    # Buyer notification
+                    cursor.execute("""
+                        INSERT INTO notifications (user_id, title, body)
+                        VALUES (%s, %s, %s)
+                    """, (
+                        buyer_id,
+                        "⏳ Transaction Update",
+                        f"Waiting for seller to confirm transaction for '{item_name}'"
+                    ))
+
+                    conn.commit()
+
+        except Exception:
+            pass
+
     # ── USER IDENTITY MANAGEMENT ──────────────────────────────────────────────
 
     def add_user(self, username, password, region, user_type, email,
@@ -503,81 +539,157 @@ class EcoMatchDB:
                     return {"success": True}
         except Exception as e:
             return {"success": False, "error": str(e)}
-
+        
     def mark_item_shipped(self, item_id):
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-                    cursor.execute("UPDATE items SET seller_shipped = TRUE WHERE id = %s", (item_id,))
+
+                    cursor.execute("""
+                        UPDATE items
+                        SET seller_shipped = TRUE
+                        WHERE id = %s
+                    """, (item_id,))
+
                     conn.commit()
+
+            # IMPORTANT: fresh connection check
             self._check_transaction_complete(item_id)
+
             return {"success": True}
+
         except Exception as e:
             return {"success": False, "error": str(e)}
-
+    
     def mark_item_received(self, item_id):
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-                    cursor.execute("UPDATE items SET buyer_received = TRUE WHERE id = %s", (item_id,))
+
+                    cursor.execute("""
+                        UPDATE items
+                        SET buyer_received = TRUE
+                        WHERE id = %s
+                    """, (item_id,))
+
                     conn.commit()
+
+            # IMPORTANT: fresh connection check
             self._check_transaction_complete(item_id)
+
             return {"success": True}
+
         except Exception as e:
             return {"success": False, "error": str(e)}
 
     def _check_transaction_complete(self, item_id, source_table="items"):
         """
-        FIX #7: Correctly archives transaction into past_transactions
-        and deactivates the item so it appears in history.
-        """
+        Finalizes transaction ONLY when:
+        seller_shipped = TRUE AND buyer_received = TRUE
+
+        - inserts into past_transactions (once only)
+        - updates item status
+        - sends notifications (once only)
+            """
+
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
+
                     table = "company_items" if source_table == "company_items" else "items"
+
+                    # 1. Fetch latest state
                     cursor.execute(f"""
-                        SELECT id, user_id, buyer_id, seller_shipped, buyer_received,
-                               item_name, price, listing_type
-                        FROM {table} WHERE id = %s
-                    """, (item_id,))
+                        SELECT
+                            id,
+                            user_id,
+                            buyer_id,
+                            seller_shipped,
+                            buyer_received,
+                            item_name,
+                            price,
+                            listing_type
+                        FROM {table}
+                        WHERE id = %s
+                        """, (item_id,))
+
                     item = cursor.fetchone()
+
                     if not item:
                         return
-                    if item["seller_shipped"] and item["buyer_received"]:
-                        # Check not already recorded
-                        cursor.execute("""
-                            SELECT id FROM past_transactions WHERE item_id = %s AND source_table = %s
-                        """, (item_id, source_table))
-                        if cursor.fetchone():
-                            return  # already recorded, skip
 
+                    # 2. Must be fully completed
+                    if not (item["seller_shipped"] and item["buyer_received"]):
+                        print("DEBUG: NOT COMPLETE YET")
+                        print("seller_shipped:", item["seller_shipped"])
+                        print("buyer_received:", item["buyer_received"])
+                        return
+
+                    # 3. Prevent duplicate transaction entry (IMPORTANT FIX)
+                    cursor.execute("""
+                        SELECT 1 FROM past_transactions
+                        WHERE item_id = %s AND source_table = %s
+                        LIMIT 1
+                    """, (item_id, source_table))
+
+                    if cursor.fetchone():
+                        return  # already processed
+
+                    # 4. Insert into past_transactions (ONLY ONCE)
+                    cursor.execute("""
+                        INSERT INTO past_transactions
+                            (item_id, buyer_id, seller_id, item_name,
+                             price, listing_type, source_table, completed_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                    """, (
+                        item_id,
+                        item["buyer_id"],
+                        item["user_id"],
+                        item["item_name"],
+                        item["price"],
+                            item["listing_type"],
+                    source_table
+                    ))
+
+                    # 5. Update item to completed
+                    cursor.execute(f"""
+                        UPDATE {table}
+                        SET status = 'completed',
+                            is_active = 0,
+                            reserved_by = NULL
+                        WHERE id = %s
+                    """, (item_id,))
+
+                    # 6. Notifications (buyer + seller)
+                    if item["buyer_id"]:
                         cursor.execute("""
-                            INSERT INTO past_transactions
-                                (item_id, buyer_id, seller_id, item_name,
-                                 price, listing_type, source_table, completed_at)
-                            VALUES (%s,%s,%s,%s,%s,%s,%s, NOW())
+                            INSERT INTO notifications (user_id, title, body)
+                            VALUES (%s, %s, %s)
                         """, (
-                            item["id"], item["buyer_id"], item["user_id"],
-                            item["item_name"], item["price"],
-                            item["listing_type"], source_table
+                            item["buyer_id"],
+                            "🎉 Transaction Completed",
+                            f"Your purchase '{item['item_name']}' is completed!"
                         ))
-                        cursor.execute(f"""
-                            UPDATE {table}
-                            SET status = 'completed', reserved_by = NULL, is_active = 0
-                            WHERE id = %s
-                        """, (item_id,))
-                        if item["buyer_id"]:
-                            cursor.execute("""
-                                INSERT INTO notifications (user_id, title, body)
-                                VALUES (%s, %s, %s)
-                            """, (
-                                item["buyer_id"],
-                                f"🎉 Transaction Complete: {item['item_name']}",
-                                f"Your transaction for '{item['item_name']}' has been completed. Thank you for using E-match!"
-                            ))
-                        conn.commit()
+
+                    cursor.execute("""
+                        INSERT INTO notifications (user_id, title, body)
+                        VALUES (%s, %s, %s)
+                    """, (
+                        item["user_id"],
+                        "🎉 Transaction Completed",
+                        f"Your item '{item['item_name']}' has been sold successfully!"
+                    ))
+
+                    conn.commit()
+
         except Exception as e:
-            st.error(f"Transaction completion error: {e}")
+            try:
+                import streamlit as st
+                import traceback
+                st.error("Transaction completion failed")
+                st.code(traceback.format_exc())
+            except:
+                pass
 
     # ── CLAIMS ────────────────────────────────────────────────────────────────
 
@@ -841,8 +953,36 @@ class EcoMatchDB:
                     return {"transactions": [dict(r) for r in cursor.fetchall()]}
         except Exception:
             return {"transactions": []}
+        
+    def is_item_reserved(self, item_id):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT reserved_by, status
+                        FROM items
+                        WHERE id = %s
+                    """, (item_id,))
 
-    # ── COMPANY INVENTORY (separate table — never mixed with personal items) ──
+                    row = cursor.fetchone()
+
+                    if not row:
+                            return False
+
+                    # RESERVED if someone has taken it
+                    if row["reserved_by"] is not None:
+                        return True
+
+                    # OPTIONAL: also treat active transaction states as reserved
+                    if row["status"] in ["reserved", "waiting_seller", "waiting_buyer"]:
+                            return True
+
+                return False
+
+        except Exception:
+            return False
+
+        # ── COMPANY INVENTORY (separate table — never mixed with personal items) ──
 
     def add_company_item(self, user_id, item_name, stock_name, category, region,
                          quantity=1, description="", expiry_date=None,
