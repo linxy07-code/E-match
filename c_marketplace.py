@@ -89,13 +89,33 @@ def render_company_marketplace(db, user_id):
                     st.markdown("<div class='co-mp-img-frame'>🏭</div>",
                                 unsafe_allow_html=True)
 
+                desc_block = ""
+
+                if listing_type == "exchange":
+                    offer = item.get("exchange_offer") or "—"
+                    want = item.get("exchange_want") or "—"
+
+                    desc_block = f"""
+                    <div>🔄 <b>Offering:</b> {html_lib.escape(str(offer))}</div>
+                    <div>🎯 <b>Wanted:</b> {html_lib.escape(str(want))}</div>
+                    """
+                else:
+                    desc = item.get("description") or "—"
+                    desc_block = f"""
+                    <div>📝 <b>Description:</b> {html_lib.escape(str(desc))}</div>
+                    """
+
                 st.markdown(f"""
                 <div class="co-mp-card">
                     <p><b>{raw_name}</b></p>
+
                     <div>{badge_html} {exp_badge}</div>
+
                     <div>🏢 {company_name}</div>
                     <div>📍 {item.get('region','—')}</div>
                     <div>🏷️ {item.get('category','—')}</div>
+
+                    {desc_block}
                 </div>
                 """, unsafe_allow_html=True)
 

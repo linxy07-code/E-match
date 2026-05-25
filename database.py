@@ -847,7 +847,8 @@ class EcoMatchDB:
     def add_company_item(self, user_id, item_name, stock_name, category, region,
                          quantity=1, description="", expiry_date=None,
                          image_path=None, listing_type="sell",
-                         price=None, phone_number=None):
+                         price=None, phone_number=None,exchange_offer=None,
+                         exchange_want=None):
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -855,14 +856,15 @@ class EcoMatchDB:
                         INSERT INTO company_items
                             (user_id, item_name, stock_name, category, region,
                              quantity, description, expiry_date, image_path,
-                             listing_type, price, phone_number)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                             listing_type, price, phone_number,
+                             exchange_offer, exchange_want)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     """, (
                         user_id, item_name, stock_name, category, region,
                         quantity, description, expiry_date, image_path,
                         listing_type,
                         float(price) if price is not None else None,
-                        phone_number,
+                        phone_number,exchange_offer, exchange_want,
                     ))
                     conn.commit()
                     return {"success": True}
@@ -877,6 +879,7 @@ class EcoMatchDB:
                         SELECT id AS item_id, item_name, stock_name, category,
                                region, quantity, description, expiry_date,
                                image_path, listing_type, price, phone_number,
+                               exchange_offer, exchange_want,
                                seller_shipped, buyer_received, status, alert_sent,
                                created_at
                         FROM company_items
@@ -901,7 +904,9 @@ class EcoMatchDB:
                         SELECT ci.id AS item_id, ci.user_id, ci.item_name, ci.stock_name,
                                ci.category, ci.region, ci.quantity, ci.description,
                                ci.expiry_date, ci.image_path, ci.listing_type, ci.price,
-                               ci.phone_number, ci.created_at,
+                               ci.phone_number,
+                               ci.exchange_offer, ci.exchange_want,
+                               ci.created_at,
                                u.username AS seller_name, u.company_name
                         FROM company_items ci
                         JOIN users u ON ci.user_id = u.id
@@ -1020,6 +1025,7 @@ class EcoMatchDB:
                         SELECT ci.id AS item_id, ci.item_name, ci.category, ci.region,
                                ci.quantity, ci.description, ci.image_path,
                                ci.listing_type, ci.price, ci.phone_number,
+                               ci.exchange_offer, ci.exchange_want,
                                ci.buyer_received, ci.seller_shipped, ci.created_at,
                                u.username AS seller_name, u.company_name
                         FROM company_items ci

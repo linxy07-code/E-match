@@ -1,4 +1,3 @@
-# app.py
 import sys
 import os
 import streamlit as st
@@ -270,10 +269,12 @@ with st.sidebar:
         unread  = db.count_unread_notifications(user_id)
 
         type_color = "#60a5fa" if user_type_session == "Company" else "#86efac"
+        
+        # Display trust score for ALL user types
         trust_line = (
             f'⭐ Trust: <strong style="color:#d1fae5!important">'
             f'{st.session_state.get("trust_score",10)} / 10</strong><br>'
-        ) if user_type_session == "Personal" else ""
+        )
 
         st.markdown(f"""
         <div style="padding:10px 4px">
@@ -753,7 +754,6 @@ else:
             render_company_past_transactions(db, user_id)
 
         elif page_key == "Company Trust & Safety":
-            # FIX #3: company uses the same shared page which detects user_type
             render_trust_safety_page(db, user_id)
 
         elif page_key == "Notifications":
