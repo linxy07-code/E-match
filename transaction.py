@@ -9,6 +9,7 @@ def render_past_transaction_page(db, user_id):
         <p>Your completed trading history on E-match</p>
     </div>""", unsafe_allow_html=True)
 
+
     res = db.get_past_transactions(user_id)
     transactions = res.get("transactions", [])
 
@@ -16,8 +17,15 @@ def render_past_transaction_page(db, user_id):
         st.info("No completed transactions yet.")
         return
 
-    seller_tx = [t for t in transactions if t.get("seller_id") == user_id]
-    buyer_tx  = [t for t in transactions if t.get("buyer_id") == user_id]
+    seller_tx = [
+        t for t in transactions
+        if int(t.get("seller_id")) == int(user_id)
+    ]
+
+    buyer_tx = [
+        t for t in transactions
+        if int(t.get("buyer_id")) == int(user_id)
+    ]
 
     tab1, tab2 = st.tabs(["🏪 Sold", "🛒 Bought"])
 

@@ -971,6 +971,8 @@ class EcoMatchDB:
 
     def get_past_transactions(self, user_id):
         try:
+            user_id = str(user_id)  # convert to string since DB is TEXT
+
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
@@ -978,8 +980,14 @@ class EcoMatchDB:
                         WHERE buyer_id = %s OR seller_id = %s
                         ORDER BY completed_at DESC
                     """, (user_id, user_id))
-                    return {"transactions": [dict(r) for r in cursor.fetchall()]}
-        except Exception:
+
+                    rows = cursor.fetchall()
+                    return {"transactions": [dict(r) for r in rows]}
+
+        except Exception as e:
+            import traceback
+            st.error("DB ERROR in get_past_transactions")
+            st.code(traceback.format_exc())
             return {"transactions": []}
 
     def is_item_reserved(self, item_id):
