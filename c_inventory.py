@@ -1,4 +1,3 @@
-# c_inventory.py
 import streamlit as st
 import html
 from datetime import datetime, date
@@ -25,7 +24,7 @@ def _expiry_badge(expiry_date):
 def _lt_badge(listing_type, price=None):
     if listing_type == "sell":
         label = f"💵 RM {float(price):.2f}" if price else "💵 Sell"
-        css   = "lt-sell"
+        css = "lt-sell"
     elif listing_type == "exchange":
         label, css = "🔄 Exchange", "lt-exchange"
     else:
@@ -34,60 +33,46 @@ def _lt_badge(listing_type, price=None):
 
 
 def render_company_inventory(db, user_id):
-    st.markdown("""
-    <div class="page-header">
-        <h1>🗂️ My Uploads / Items</h1>
-        <p>All items your company has listed — sorted by expiry date</p>
-    </div>""", unsafe_allow_html=True)
+    st.markdown(
+        '<div class="page-header"><h1>🧾 My Uploads / Items</h1>'
+        "<p>All items your company has posted to the marketplace</p></div>",
+        unsafe_allow_html=True,
+    )
 
-    items = db.get_company_inventory(user_id).get("items", [])
+    items_res = db.get_company_inventory(user_id)
+    items = items_res.get("items", [])
 
     if not items:
-        st.info("No inventory listed yet. Go to **Upload Inventory** to add items!")
+        st.info("You haven't posted any items yet. Go to **Upload Item** to get started!")
         return
 
     st.caption(f"{len(items)} active listing(s)")
 
     for item in items:
-        lt    = item.get("listing_type") or "sell"
+        lt = item.get("listing_type") or "free"
         price = item.get("price")
         badge = _lt_badge(lt, price)
 
-        expiry_raw = item.get("expiry_date")
-        exp_cls, exp_label = _expiry_badge(expiry_raw)
-
-        if expiry_raw:
-            try:
-                days_left = (datetime.strptime(expiry_raw, "%Y-%m-%d").date() - date.today()).days
-                if days_left < 0:
-                    expiry_display = f"❌ EXPIRED ({expiry_raw})"
-                elif days_left <= 7:
-                    expiry_display = f"🚨 {days_left}d left — {expiry_raw}"
-                elif days_left <= 14:
-                    expiry_display = f"⚠️ {days_left}d left — {expiry_raw}"
-                else:
-                    expiry_display = f"✅ {days_left}d left — {expiry_raw}"
-            except Exception:
-                expiry_display = expiry_raw
-        else:
-            expiry_display = "No expiry date"
-
         price_row = (
             f"<div class='my-item-row'>💰 <strong>Price:</strong> RM {float(price):.2f}</div>"
-            if lt == "sell" and price else ""
+            if lt == "sell" and price
+            else ""
         )
 
         phone_row = (
             f"<div class='my-item-row'>📞 <strong>Contact:</strong> {item['phone_number']}</div>"
-            if item.get("phone_number") else ""
+            if item.get("phone_number")
+            else ""
         )
 
-        stock_row = (
-            f"<div class='my-item-row'>🏷️ <strong>Stock Name:</strong> {item['stock_name']}</div>"
-            if item.get("stock_name") else ""
+        exp = item.get("expiry_date")
+        expiry_row = (
+            f"<div class='my-item-row'>📅 <strong>Expires:</strong> {exp}</div>"
+            if exp
+            else ""
         )
 
-        desc      = item.get("description") or ""
+        desc = item.get("description") or ""
         desc_block = f"<p class='my-item-desc'>{desc}</p>" if desc else ""
 
         seller_shipped = item.get("seller_shipped", False)
@@ -109,74 +94,107 @@ def render_company_inventory(db, user_id):
         with info_col:
             st.markdown(f"""
             <div class="my-item-card">
-                <p class="my-item-title">
-                    {html.escape(item.get('item_name',''))} {badge}
-                    <span class="lt-badge {exp_cls}">{exp_label}</span>
-                </p>
-                {stock_row}
+                <p class="my-item-title">{item['item_name']} {badge}</p>
                 <div class="my-item-row">🏷️ <strong>Category:</strong> {item.get('category','—')}</div>
                 <div class="my-item-row">📍 <strong>Region:</strong> {item.get('region','—')}</div>
                 <div class="my-item-row">📦 <strong>Quantity:</strong> {item.get('quantity',1)}</div>
-                <div class="my-item-row">📅 <strong>Expiry:</strong> {expiry_display}</div>
+                <div class="my-item-row">📅 <strong>Expiry:</strong> {exp or 'No expiry date'}</div>
                 {price_row}{phone_row}{desc_block}
             </div>
             """, unsafe_allow_html=True)
 
             item_id = item["item_id"]
 
-            # ── TRANSACTION STATE DISPLAY ─────────────────────────────────────
-            completed_key = f"co_inv_completed_{item_id}"
+            # ─────────────────────────────────────────────
+            # SAME SESSION STATE LOGIC AS PERSONAL
+            # ─────────────────────────────────────────────
+
+            completed_key = f"co_completed_{item_id}"
+            buyer_first_key = f"co_buyer_first_{item_id}"
+
             if completed_key not in st.session_state:
                 st.session_state[completed_key] = False
 
+            if buyer_first_key not in st.session_state:
+                st.session_state[buyer_first_key] = False
+
+            # ─────────────────────────────────────────────
+            # SAME TRANSACTION FLOW AS MY ITEMS
+            # ─────────────────────────────────────────────
+
+            # CASE 3: COMPLETE
             if seller_shipped and buyer_received:
                 st.success("🎉 Transaction completed!")
+
                 if not st.session_state[completed_key]:
                     st.balloons()
-                    st.toast(f"🎉 {item.get('item_name','')} completed!", icon="✅")
+                    st.toast(f"🎉 {item['item_name']} completed!", icon="✅")
                     st.session_state[completed_key] = True
 
+            # CASE 1: seller shipped first
             elif seller_shipped and not buyer_received:
                 st.success("📦 Shipped")
                 st.info("⏳ Waiting for buyer to confirm receipt")
 
-            elif not seller_shipped and buyer_received:
+            # CASE 2: buyer received first (SELLER POPUP TRIGGER)
+            elif buyer_received and not seller_shipped:
                 st.info("📦 Buyer confirmed receipt")
                 st.info("⏳ Waiting for your shipment confirmation")
 
+                if not st.session_state[buyer_first_key]:
+                    st.session_state[buyer_first_key] = True
+                    st.balloons()
+                    st.toast(f"🎉 Buyer confirmed {item['item_name']}!", icon="📦")
+
+            # DEFAULT
             else:
                 st.info("⏳ Waiting for buyers")
 
-            # ── ACTION BUTTONS ────────────────────────────────────────────────
-            reserved = item.get("status") in ["reserved", "waiting_seller", "waiting_buyer"] \
-                       or item.get("buyer_received") or item.get("seller_shipped")
+            # ─────────────────────────────────────────────
+            # ACTION BUTTONS (SAME AS PERSONAL STYLE)
+            # ─────────────────────────────────────────────
+
+            reserved = item.get("seller_shipped") or item.get("buyer_received")
 
             col1, col2 = st.columns(2)
 
             with col1:
                 if st.button("📦 Shipped / Sent Out", key=f"co_ship_{item_id}"):
-                    # check if anyone has reserved it
-                    cart_check = db.get_company_cart_items(user_id)
-                    cart_ids   = [i["item_id"] for i in cart_check.get("items", [])]
-                    # use buyer_received as proxy for "reserved" since company items
-                    # don't have a separate is_item_reserved method
-                    item_row = db.get_company_inventory(user_id)
-                    item_live = next(
-                        (i for i in item_row.get("items", []) if i["item_id"] == item_id), None
-                    )
-                    if item_live and item_live.get("seller_shipped"):
-                        st.warning("Already marked as shipped.")
+
+                    if not reserved:
+                        st.error("❌ Cannot ship: Item is not reserved.")
+                        time.sleep(2)
+                        st.rerun()
+
                     else:
                         result = db.mark_company_item_shipped(item_id)
+
                         if result.get("success"):
+
+                            # 🔥 IMPORTANT FIX: check reverse-order completion
+                            updated = db.get_company_inventory(user_id)
+                            item_live = next(
+                                (i for i in updated.get("items", [])
+                                 if i["item_id"] == item_id),
+                                {}
+                            )
+
+                            if item_live.get("buyer_received"):
+                                st.balloons()
+                                st.session_state["show_txn_complete_dialog"] = True
+                                st.session_state["txn_complete_item"] = item["item_name"]
+
                             st.success("Item marked as shipped.")
                             st.rerun()
+
                         else:
                             st.error(result.get("error"))
 
             with col2:
                 if st.button("🗑️ Delete Listing", key=f"co_del_{item_id}"):
+
                     result = db.delete_company_item(item_id, user_id)
+
                     if result.get("success"):
                         st.success("Listing deleted.")
                         st.rerun()

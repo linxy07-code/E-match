@@ -613,11 +613,13 @@ else:
         st.markdown(header_style, unsafe_allow_html=True)
         notif_res = db.get_notifications(user_id)
         notifs    = notif_res.get("notifications", [])
+        unread_count = db.count_unread_notifications(user_id)
         if not notifs:
             st.info("No notifications yet.")
             return
         col_hdr, col_btn = st.columns([3, 1])
-        col_hdr.caption(f"{len(notifs)} notification(s)")
+        
+        col_hdr.caption(f"{unread_count} unread notification(s)")
         if col_btn.button("✅ Mark all as read", width="stretch"):
             db.mark_notifications_read(user_id); st.rerun()
         for n in notifs:

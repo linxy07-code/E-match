@@ -1,4 +1,3 @@
-# c_cart.py
 import streamlit as st
 import re
 import html as html_lib
@@ -72,37 +71,45 @@ def render_company_cart(db, user_id):
             st.markdown("  \n".join(info_lines))
             st.markdown(f"💬 **Description:** {raw_desc}")
 
-            # ── TRANSACTION STATUS ────────────────────────────────────────────
+            # ─────────────────────────────────────────────
+            # SAME LOGIC AS PERSONAL CART
+            # ─────────────────────────────────────────────
+
             item_id = item["item_id"]
 
             completed_key = f"co_txn_completed_{item_id}"
             if completed_key not in st.session_state:
                 st.session_state[completed_key] = False
 
-            # CASE 3: COMPLETED
-            if seller_shipped and buyer_received:
-                st.success("🎉 Transaction completed!")
-                if not st.session_state[completed_key]:
-                    st.balloons()
-                    st.toast(f"🎉 {item_name} transaction completed!", icon="✅")
-                    st.session_state[completed_key] = True
-
-            # CASE 1: seller shipped, waiting buyer
-            elif seller_shipped and not buyer_received:
-                st.success("📦 Seller has shipped your item! Please confirm receipt.")
-
-            # CASE 2: buyer confirmed first, waiting seller
-            elif not seller_shipped and buyer_received:
-                st.info("⏳ Waiting for seller to confirm shipment")
-
-            # DEFAULT
-            else:
-                pass
-
-            # ── ACTION BUTTONS ────────────────────────────────────────────────
             received_key = f"co_received_clicked_{item_id}"
             if received_key not in st.session_state:
                 st.session_state[received_key] = False
+
+            # ⭐ CASE 3: COMPLETED (BOTH TRUE)
+            if seller_shipped and buyer_received:
+                st.success("🎉 Transaction completed!")
+
+                if not st.session_state[completed_key]:
+                    st.balloons()
+                    st.session_state["show_txn_complete_dialog"] = True
+                    st.session_state["txn_complete_item"] = item_name
+                    st.session_state[completed_key] = True
+
+            # ⭐ CASE 1: seller shipped first
+            elif seller_shipped and not buyer_received:
+                st.success("📦 Seller has shipped your item! Please confirm receipt.")
+
+            # ⭐ CASE 2: buyer received first (SELLER WILL GET NOTIFIED LATER)
+            elif buyer_received and not seller_shipped:
+                st.info("📦 Received by buyer")
+                st.info("⏳ Waiting for seller to confirm shipment")
+
+            else:
+                st.info("⏳ Waiting for transaction to begin")
+
+            # ─────────────────────────────────────────────
+            # ACTION BUTTONS
+            # ─────────────────────────────────────────────
 
             if st.session_state[received_key]:
                 st.info("✅ Receipt confirmed — transaction is being processed.")
@@ -117,13 +124,18 @@ def render_company_cart(db, user_id):
 
                 with b2:
                     if st.button("✅ Received Item", key=f"co_received_{item_id}"):
+
                         result = db.mark_company_item_received(item_id)
+
                         if result.get("success"):
                             st.session_state[received_key] = True
+
+                            # ⭐ ONLY SHOW POPUP IF SELLER ALREADY SHIPPED
                             if seller_shipped:
                                 st.balloons()
                                 st.session_state["show_txn_complete_dialog"] = True
                                 st.session_state["txn_complete_item"] = item_name
+
                             st.rerun()
                         else:
                             st.error(f"Could not update: {result.get('error')}")

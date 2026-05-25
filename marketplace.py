@@ -130,31 +130,52 @@ def render_marketplace_page():
     """, unsafe_allow_html=True)
 
     # ── Filters ──────────────────────────────────────────────────────────────
-    f1, f2, f3, f4 = st.columns([2, 1, 1, 1])
-    search_q = f1.text_input(
-        "Search Marketplace Items", 
-        placeholder="🔍 Search items…", 
-        key="mp_search", 
-        label_visibility="collapsed"
-    )
-    filt_region = f2.selectbox(
-        "Region",
-        ["All Regions", "Johor", "Kedah", "Kelantan", "Melaka", "Negeri Sembilan",
-         "Pahang", "Perak", "Perlis", "Pulau Pinang", "Selangor", "Terengganu",
-         "Sabah", "Sarawak"],
-        key="mp_region",
-    )
-    filt_type = f3.selectbox(
-        "Type",
-        ["All Types", "🆓 Free", "🔄 Exchange", "💵 Sell"],
-        key="mp_type",
-    )
-    filt_condition = f4.selectbox(
-        "Condition",
-        ["All Conditions", "Brand New", "Good", "Second Hand"],
-        key="mp_condition"
-    )
 
+    st.markdown("""
+    <style>
+    .filter-align {
+        margin-top: 4px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    f1, f2, f3, f4 = st.columns([2, 1, 1, 1])
+
+    with f1:
+        st.markdown('<div class="filter-align">', unsafe_allow_html=True)
+
+        search_q = st.text_input(
+            "Search Marketplace Items",
+            placeholder="🔍 Search items…",
+            key="mp_search",
+            label_visibility="collapsed"
+        )
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with f2:
+        filt_region = st.selectbox(
+            "Region",
+            ["All Regions", "Johor", "Kedah", "Kelantan", "Melaka", "Negeri Sembilan",
+             "Pahang", "Perak", "Perlis", "Pulau Pinang", "Selangor", "Terengganu",
+             "Sabah", "Sarawak"],
+            key="mp_region",
+        )
+
+    with f3:
+        filt_type = st.selectbox(
+            "Type",
+            ["All Types", "🆓 Free", "🔄 Exchange", "💵 Sell"],
+            key="mp_type",
+        )
+
+    with f4:
+        filt_condition = st.selectbox(
+            "Condition",
+            ["All Conditions", "Brand New", "Good", "Second Hand"],
+            key="mp_condition"
+        )
+        
     # ── Fetch ─────────────────────────────────────────────────────────────────
     db_result = db.get_all_items(search=search_q if search_q else None)
     if not db_result["success"]:

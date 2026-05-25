@@ -1238,29 +1238,54 @@ class EcoMatchDB:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     stats = {}
-                    cursor.execute(
-                        "SELECT COUNT(*) FROM company_items WHERE user_id=%s AND is_active=1",
-                        (user_id,)
-                    )
-                    stats["total_listings"] = cursor.fetchone()["count"] or 0
+
+                    # ── 1. TOTAL LISTINGS ─────────────────────────────
                     cursor.execute("""
-                        SELECT COUNT(*) FROM company_items
-                        WHERE user_id=%s AND is_active=1
-                          AND expiry_date IS NOT NULL AND expiry_date <> ''
-                          AND TO_DATE(expiry_date,'YYYY-MM-DD') <= CURRENT_DATE + INTERVAL '14 days'
-                          AND TO_DATE(expiry_date,'YYYY-MM-DD') >= CURRENT_DATE
+                        SELECT COUNT(*) AS count
+                        FROM company_items
+                        WHERE user_id = %s AND is_active = 1
+                    """, (user_id,))
+                    stats["total_listings"] = cursor.fetchone()["count"] or 0
+
+                    # ── 2. NEAR EXPIRY ────────────────────────────────
+                    cursor.execute("""
+                        SELECT COUNT(*) AS count
+                        FROM company_items
+                        WHERE user_id = %s
+                          AND is_active = 1
+                          AND expiry_date IS NOT NULL
+                          AND expiry_date <> ''
+                          AND TO_DATE(expiry_date, 'YYYY-MM-DD') 
+                              BETWEEN CURRENT_DATE 
+                              AND CURRENT_DATE + INTERVAL '14 days'
                     """, (user_id,))
                     stats["near_expiry"] = cursor.fetchone()["count"] or 0
+
+                    # ── 3. COMPLETED SALES ────────────────────────────
                     cursor.execute("""
-                        SELECT COUNT(*) FROM past_transactions
-                        WHERE seller_id = %s AND source_table = 'company_items'
+                        SELECT COUNT(*) AS count
+                        FROM past_transactions
+                        WHERE seller_id = %s
+                          AND source_table = 'company_items'
                     """, (user_id,))
                     stats["completed_sales"] = cursor.fetchone()["count"] or 0
+
+                    # ── 4. TOTAL REVENUE ──────────────────────────────
                     cursor.execute("""
-                        SELECT COALESCE(SUM(price),0) FROM past_transactions
-                        WHERE seller_id = %s AND source_table = 'company_items'
+                        SELECT COALESCE(SUM(price), 0) AS total
+                        FROM past_transactions
+                        WHERE seller_id = %s
+                          AND source_table = 'company_items'
                     """, (user_id,))
-                    stats["total_revenue"] = float(cursor.fetchone()["coalesce"] or 0)
+                    stats["total_revenue"] = float(cursor.fetchone()["total"] or 0)
+
                     return stats
-        except Exception:
-            return {"total_listings": 0, "near_expiry": 0, "completed_sales": 0, "total_revenue": 0.0}
+
+        except Exception as e:
+            return {
+                "total_listings": 0,
+                "near_expiry": 0,
+                "completed_sales": 0,
+                "total_revenue": 0.0,
+                "error": str(e)
+            }
