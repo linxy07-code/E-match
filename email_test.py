@@ -1,3 +1,4 @@
+# email_test.py
 import smtplib
 import random
 from email.mime.text import MIMEText

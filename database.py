@@ -1,5 +1,4 @@
 # database.py
-# database.py
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import bcrypt
@@ -33,8 +32,6 @@ class EcoMatchDB:
                         created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
-
-                # Automated schema migrations for users
                 for col, definition in [
                     ("phone_number",    "TEXT"),
                     ("company_name",    "TEXT"),
@@ -73,8 +70,6 @@ class EcoMatchDB:
                         created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
-
-                # Automated schema migrations for items
                 for col, definition in [
                     ("reserved_by",    "INTEGER REFERENCES users(id)"),
                     ("buyer_id",       "INTEGER REFERENCES users(id)"),
@@ -86,7 +81,7 @@ class EcoMatchDB:
                     ("phone_number",   "TEXT"),
                     ("quantity",       "INTEGER DEFAULT 1"),
                     ("exchange_offer", "TEXT"),
-                    ("exchange_want", "TEXT"),
+                    ("exchange_want",  "TEXT"),
                 ]:
                     cursor.execute("""
                         SELECT column_name FROM information_schema.columns
@@ -95,7 +90,7 @@ class EcoMatchDB:
                     if not cursor.fetchone():
                         cursor.execute(f"ALTER TABLE items ADD COLUMN {col} {definition}")
 
-                # ── 3. COMPANY INVENTORY TABLE ────────────────────────────────
+                # ── 3. COMPANY INVENTORY TABLE (separate, never mixed with personal) ──
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS company_items (
                         id             SERIAL PRIMARY KEY,
@@ -112,7 +107,7 @@ class EcoMatchDB:
                         price          NUMERIC(10, 2),
                         phone_number   TEXT,
                         exchange_offer TEXT,
-                        exchange_want TEXT,
+                        exchange_want  TEXT,
                         is_active      INTEGER DEFAULT 1,
                         reserved_by    INTEGER REFERENCES users(id),
                         buyer_id       INTEGER REFERENCES users(id),
@@ -123,6 +118,23 @@ class EcoMatchDB:
                         created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
+                # migrate any missing columns on company_items
+                for col, definition in [
+                    ("exchange_offer", "TEXT"),
+                    ("exchange_want",  "TEXT"),
+                    ("phone_number",   "TEXT"),
+                    ("stock_name",     "TEXT"),
+                    ("alert_sent",     "BOOLEAN DEFAULT FALSE"),
+                    ("buyer_id",       "INTEGER REFERENCES users(id)"),
+                    ("seller_shipped", "BOOLEAN DEFAULT FALSE"),
+                    ("buyer_received", "BOOLEAN DEFAULT FALSE"),
+                ]:
+                    cursor.execute("""
+                        SELECT column_name FROM information_schema.columns
+                        WHERE table_name = 'company_items' AND column_name = %s
+                    """, (col,))
+                    if not cursor.fetchone():
+                        cursor.execute(f"ALTER TABLE company_items ADD COLUMN {col} {definition}")
 
                 # ── 4. EMAIL VERIFICATION TABLE ───────────────────────────────
                 cursor.execute("""
@@ -210,7 +222,6 @@ class EcoMatchDB:
 
     def add_user(self, username, password, region, user_type, email,
                  phone_number=None, company_name=None, supervisor_name=None, address=None):
-        """Creates a new user (Personal or Company) with verification pending."""
         password_hash = bcrypt.hashpw(
             password.encode("utf-8"), bcrypt.gensalt()
         ).decode("utf-8")
@@ -235,7 +246,6 @@ class EcoMatchDB:
             return {"success": False, "error": str(e)}
 
     def verify_user(self, username, password):
-        """Validates login and returns user profile including user_type."""
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -260,7 +270,8 @@ class EcoMatchDB:
                             "trust_score": row["trust_score"],
                             "status":      row["status"],
                         }
-                    return {"success": False, "error": "Invalid credentials"}
+                    # FIX #8: clearer error message
+                    return {"success": False, "error": "Invalid username or password. Please try again."}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -338,11 +349,10 @@ class EcoMatchDB:
     # ── PERSONAL MARKETPLACE ITEMS ────────────────────────────────────────────
 
     def add_item(self, user_id, item_name, category, region,
-             condition, quantity, expiry_date,
-             image_path, description,
-             listing_type, price, phone_number,
-             exchange_offer=None, exchange_want=None):
-
+                 condition, quantity, expiry_date,
+                 image_path, description,
+                 listing_type, price, phone_number,
+                 exchange_offer=None, exchange_want=None):
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -353,24 +363,13 @@ class EcoMatchDB:
                              phone_number, exchange_offer, exchange_want)
                         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     """, (
-                        user_id,
-                        item_name,
-                        category,
-                        region,
-                        condition,
-                        quantity,
-                        description,
-                        expiry_date,
-                        image_path,
-                        listing_type,
+                        user_id, item_name, category, region, condition, quantity,
+                        description, expiry_date, image_path, listing_type,
                         float(price) if price is not None else None,
-                        phone_number,
-                        exchange_offer,
-                        exchange_want
+                        phone_number, exchange_offer, exchange_want,
                     ))
                     conn.commit()
                     return {"success": True}
-
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -425,7 +424,8 @@ class EcoMatchDB:
                     cursor.execute("""
                         SELECT id AS item_id, item_name, category, region,
                                condition, quantity, description, expiry_date,
-                               image_path, listing_type, price, phone_number, exchange_offer, exchange_want,
+                               image_path, listing_type, price, phone_number,
+                               exchange_offer, exchange_want,
                                seller_shipped, buyer_received, status, created_at
                         FROM items
                         WHERE user_id = %s AND is_active = 1
@@ -486,45 +486,21 @@ class EcoMatchDB:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def unreserve_item(self, item_id, user_id):
-        try:
-            with self._get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("SELECT reserved_by FROM items WHERE id = %s", (item_id,))
-                    row = cursor.fetchone()
-                    if not row:
-                        return {"success": False, "error": "Item not found"}
-                    if row["reserved_by"] != user_id:
-                        return {"success": False, "error": "Not your reserved item"}
-                    cursor.execute("UPDATE items SET reserved_by = NULL WHERE id = %s", (item_id,))
-                    conn.commit()
-                    return {"success": True}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
     def cancel_reservation(self, item_id):
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-
-                    # 1. Clear reservation
                     cursor.execute("""
                         UPDATE items
-                        SET reserved_by = NULL,
-                            buyer_id = NULL,
-                            status = 'active'
+                        SET reserved_by = NULL, buyer_id = NULL, status = 'active'
                         WHERE id = %s
                     """, (item_id,))
-
-                    # 2. IMPORTANT: remove pending claims for this item
                     cursor.execute("""
                         DELETE FROM claims
                         WHERE item_id = %s AND status = 'pending'
                     """, (item_id,))
-
                     conn.commit()
                     return {"success": True}
-
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -551,6 +527,10 @@ class EcoMatchDB:
             return {"success": False, "error": str(e)}
 
     def _check_transaction_complete(self, item_id, source_table="items"):
+        """
+        FIX #7: Correctly archives transaction into past_transactions
+        and deactivates the item so it appears in history.
+        """
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -564,6 +544,13 @@ class EcoMatchDB:
                     if not item:
                         return
                     if item["seller_shipped"] and item["buyer_received"]:
+                        # Check not already recorded
+                        cursor.execute("""
+                            SELECT id FROM past_transactions WHERE item_id = %s AND source_table = %s
+                        """, (item_id, source_table))
+                        if cursor.fetchone():
+                            return  # already recorded, skip
+
                         cursor.execute("""
                             INSERT INTO past_transactions
                                 (item_id, buyer_id, seller_id, item_name,
@@ -579,7 +566,6 @@ class EcoMatchDB:
                             SET status = 'completed', reserved_by = NULL, is_active = 0
                             WHERE id = %s
                         """, (item_id,))
-                        # Notify buyer: transaction complete
                         if item["buyer_id"]:
                             cursor.execute("""
                                 INSERT INTO notifications (user_id, title, body)
@@ -587,11 +573,11 @@ class EcoMatchDB:
                             """, (
                                 item["buyer_id"],
                                 f"🎉 Transaction Complete: {item['item_name']}",
-                                f"Your transaction for '{item['item_name']}' has been marked as completed. Thank you for using E-match!"
+                                f"Your transaction for '{item['item_name']}' has been completed. Thank you for using E-match!"
                             ))
                         conn.commit()
         except Exception as e:
-            st.error(f"Transaction error: {e}")
+            st.error(f"Transaction completion error: {e}")
 
     # ── CLAIMS ────────────────────────────────────────────────────────────────
 
@@ -613,8 +599,7 @@ class EcoMatchDB:
                     cursor.execute("""
                         SELECT i.item_name, i.listing_type, i.price,
                                i.user_id AS owner_id, u.username AS claimer_name
-                        FROM items i
-                        JOIN users u ON u.id = %s
+                        FROM items i JOIN users u ON u.id = %s
                         WHERE i.id = %s
                     """, (claimer_id, item_id))
                     info = cursor.fetchone()
@@ -649,12 +634,17 @@ class EcoMatchDB:
             return {"success": False, "error": str(e)}
 
     def update_claim_status(self, item_id, status):
-        return (
-            self.client.table("claim")
-            .update({"status": status})
-            .eq("item_id", item_id)
-            .execute()
-        )
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE claims SET status = %s
+                        WHERE item_id = %s
+                    """, (status, item_id))
+                    conn.commit()
+                    return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
     # ── NOTIFICATIONS ─────────────────────────────────────────────────────────
 
@@ -852,7 +842,7 @@ class EcoMatchDB:
         except Exception:
             return {"transactions": []}
 
-    # ── COMPANY INVENTORY METHODS ─────────────────────────────────────────────
+    # ── COMPANY INVENTORY (separate table — never mixed with personal items) ──
 
     def add_company_item(self, user_id, item_name, stock_name, category, region,
                          quantity=1, description="", expiry_date=None,
@@ -880,7 +870,6 @@ class EcoMatchDB:
             return {"success": False, "error": str(e)}
 
     def get_company_inventory(self, user_id):
-        """Returns all active items for a specific company."""
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -892,14 +881,19 @@ class EcoMatchDB:
                                created_at
                         FROM company_items
                         WHERE user_id = %s AND is_active = 1
-                        ORDER BY id DESC
+                        ORDER BY
+                            CASE
+                                WHEN expiry_date IS NOT NULL AND expiry_date <> ''
+                                THEN TO_DATE(expiry_date,'YYYY-MM-DD')
+                                ELSE '9999-12-31'::DATE
+                            END ASC,
+                            id DESC
                     """, (user_id,))
                     return {"success": True, "items": [dict(row) for row in cursor.fetchall()]}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
     def get_all_company_items(self, search=None, category=None):
-        """Returns all active company items visible on the company marketplace."""
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -908,8 +902,7 @@ class EcoMatchDB:
                                ci.category, ci.region, ci.quantity, ci.description,
                                ci.expiry_date, ci.image_path, ci.listing_type, ci.price,
                                ci.phone_number, ci.created_at,
-                               u.username AS seller_name,
-                               u.company_name
+                               u.username AS seller_name, u.company_name
                         FROM company_items ci
                         JOIN users u ON ci.user_id = u.id
                         WHERE ci.is_active = 1 AND ci.reserved_by IS NULL
@@ -926,51 +919,24 @@ class EcoMatchDB:
                     return {"success": True, "items": [dict(row) for row in cursor.fetchall()]}
         except Exception as e:
             return {"success": False, "error": str(e)}
-        
+
     def delete_company_item(self, item_id, user_id):
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-
-                    # Verify ownership first
-                    cursor.execute("""
-                        SELECT user_id
-                        FROM company_items
-                        WHERE id = %s
-                    """, (item_id,))
-
+                    cursor.execute("SELECT user_id FROM company_items WHERE id = %s", (item_id,))
                     row = cursor.fetchone()
-
                     if not row:
-                        return {
-                            "success": False,
-                            "error": "Item not found"
-                        }
-
+                        return {"success": False, "error": "Item not found"}
                     if row["user_id"] != user_id:
-                        return {
-                            "success": False,
-                            "error": "Unauthorized"
-                        }
-
-                    # Delete item
-                    cursor.execute("""
-                        DELETE FROM company_items
-                        WHERE id = %s
-                    """, (item_id,))
-
+                        return {"success": False, "error": "Unauthorized"}
+                    cursor.execute("DELETE FROM company_items WHERE id = %s", (item_id,))
                     conn.commit()
-
                     return {"success": True}
-
         except Exception as e:
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
 
     def get_near_expiry_company_items(self, user_id, days=14):
-        """Returns company items expiring within `days` days, for alerts."""
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -980,10 +946,10 @@ class EcoMatchDB:
                         FROM company_items
                         WHERE user_id = %s AND is_active = 1
                           AND expiry_date IS NOT NULL AND expiry_date <> ''
-                          AND TO_DATE(expiry_date,'YYYY-MM-DD') <= CURRENT_DATE + INTERVAL '%s days'
+                          AND TO_DATE(expiry_date,'YYYY-MM-DD') <= CURRENT_DATE + INTERVAL '{days} days'
                           AND TO_DATE(expiry_date,'YYYY-MM-DD') >= CURRENT_DATE
                         ORDER BY expiry_date ASC
-                    """ % days, (user_id,))
+                    """.format(days=days), (user_id,))
                     return [dict(row) for row in cursor.fetchall()]
         except Exception:
             return []
@@ -1066,7 +1032,6 @@ class EcoMatchDB:
             return {"success": False, "error": str(e)}
 
     def get_company_stats(self, user_id):
-        """Returns inventory summary stats for a company's dashboard."""
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
