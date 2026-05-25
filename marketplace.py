@@ -132,11 +132,11 @@ def render_marketplace_page():
     # ── Filters ──────────────────────────────────────────────────────────────
     f1, f2, f3, f4 = st.columns([2, 1, 1, 1])
     search_q = f1.text_input(
-    "Search Marketplace Items", 
-    placeholder="🔍 Search items…", 
-    key="mp_search", 
-    label_visibility="collapsed"
-)
+        "Search Marketplace Items", 
+        placeholder="🔍 Search items…", 
+        key="mp_search", 
+        label_visibility="collapsed"
+    )
     filt_region = f2.selectbox(
         "Region",
         ["All Regions", "Johor", "Kedah", "Kelantan", "Melaka", "Negeri Sembilan",
@@ -202,95 +202,99 @@ def render_marketplace_page():
             seller_trust = item.get("seller_trust")
 
             # ── 1. EXTRACT DATA SAFELY FROM DATABASE ──────────────────────────
-            raw_desc   = str(item.get('description') or "")
-            raw_seller = str(item.get('seller_name') or "Unknown")
+            raw_desc   = str(item.get('description') or "").strip()
+            raw_seller = str(item.get('seller_name') or "Unknown").strip()
 
-            # ── 2. BULLETPROOF REGEX TAG STRIPPER ─────────────────────────────
-            if "<p" in raw_desc or "</p>" in raw_desc:
+            # ── 2. AGGRESSIVE TEXT EXTRACTION FOR CONTAMINATED LOGS ──────────
+            if "<div" in raw_desc or "<p" in raw_desc or "mp-card-desc" in raw_desc:
+                clean_text = html.unescape(raw_desc)
+                inner_segments = re.findall(r'>(?!<)(.*?)(?=<|$)', clean_text)
+                clean_text = " ".join([t.strip() for t in inner_segments if t.strip() and "Item to" not in t])
+                raw_desc = clean_text if clean_text else "No description provided."
+            else:
                 raw_desc = re.sub(r'<[^>]*>', '', raw_desc).strip()
-                
-            if "<p" in raw_seller or "</p>" in raw_seller:
-                if "Listed by" in raw_seller:
-                    match = re.search(r'Listed by\s*<strong>(.*?)</strong>', raw_seller)
-                    raw_seller = match.group(1) if match else re.sub(r'<[^>]*>', '', raw_seller)
+
+            if "<div" in raw_seller or "<p" in raw_seller or "mp-card-seller" in raw_seller:
+                clean_sel = html.unescape(raw_seller)
+                match = re.search(r'Listed by\s*<strong>(.*?)</strong>', clean_sel, re.IGNORECASE)
+                if match:
+                    raw_seller = match.group(1)
                 else:
-                    raw_seller = re.sub(r'<[^>]*>', '', raw_seller)
-                    
+                    raw_seller = re.sub(r'<[^>]*>', '', clean_sel)
+
             raw_seller = raw_seller.replace("👤 Listed by", "").split("·")[0].strip()
 
             # ── 3. SANITIZE CONTENT OUTPUTS FOR DISPLAY ───────────────────────
-            item_name_safe    = html.escape(str(item.get('item_name', '')))
-            raw_desc_clean = html.escape(raw_desc)
+            item_name_safe = html.escape(str(item.get('item_name', '')))
+            description_clean = html.escape(html.unescape(raw_desc))
+            seller_name_clean = html.escape(raw_seller)
 
-            item_offer = None
-            item_want = None
+            item_offer = ""
+            item_want = ""
 
             if listing_type == "exchange":
                 offer_match = re.search(r"OFFER:\s*(.*)", raw_desc, re.IGNORECASE)
                 want_match  = re.search(r"WANT:\s*(.*)", raw_desc, re.IGNORECASE)
 
-                item_offer = offer_match.group(1).strip() if offer_match else ""
-                item_want  = want_match.group(1).strip() if want_match else ""
+                if offer_match or want_match:
+                    item_offer = offer_match.group(1).strip() if offer_match else ""
+                    item_want  = want_match.group(1).strip() if want_match else ""
+                else:
+                    item_offer = raw_desc
+                    item_want = "Any item"
 
-                description_clean = ""  # we won’t use normal description display for exchange
-            else:
-                description_clean = raw_desc_clean
-            seller_name_clean = html.escape(raw_seller)
-
+            # ── 4. RESOLVE DYNAMIC VALUES FOR LAYOUT ──────────────────────────
             exp_cls, exp_label = expiry_badge(item.get("expiry_date"))
             badge_html         = listing_badge_html(listing_type, price)
             expiry_badge_html  = f'<span class="mp-badge {exp_cls}">{exp_label}</span>'
+            
+            trust_str = f"{float(seller_trust):.1f}/10" if seller_trust is not None else "8.0/10"
+            
+            if listing_type == "sell" and price:
+                price_row = f'<div class="mp-card-row">💰 <strong>Price:</strong> RM {float(price):.2f}</div>'
+            else:
+                price_row = ""
 
-            # 📦 RENDERING THE CARD ROW BLOCK
-            with cols_cards[col_idx]:
-                img_url = item.get("image_path")
-                if img_url:
-                    st.markdown(f'<div class="mp-img-frame"><img src="{img_url}"></div>', unsafe_allow_html=True)
+            # ── 5. EMBED DYNAMIC IMAGE ELEMENT IN THE CARD Payloads ───────────
+            img_url = item.get("image_path")
+            if img_url:
+                img_tag_html = f'<div class="mp-img-frame"><img src="{img_url}"></div>'
+            else:
+                img_tag_html = '<div class="mp-img-frame" style="font-size:3rem;">📦</div>'
+
+            # ── 6. CONDITIONAL HOOK FOR EXPANDABLE TOGGLES ────────────────────
+            char_limit = 80
+            
+            if description_clean and description_clean.lower() != "none" and description_clean != "No description provided.":
+                if len(description_clean) <= char_limit:
+                    desc_inner_html = f'{description_clean}'
                 else:
-                    st.markdown("<div class='mp-img-frame' style='font-size:3rem;'>📦</div>", unsafe_allow_html=True)
+                    desc_inner_html = f'<input type="checkbox" id="toggle_{item_id}" class="desc-toggle"><span class="desc-short">{description_clean[:char_limit]}...</span><span class="desc-full">{description_clean}</span><label for="toggle_{item_id}" class="desc-label">Read</label>'
+            else:
+                desc_inner_html = '<span style="font-style: italic; color:#a3a3a3;">No description provided.</span>'
 
-                price_row = f"<div class='mp-card-row'>💰 <strong>Price:</strong> RM {float(price):.2f}</div>" if (listing_type == "sell" and price) else ""
-                trust_str = f"{float(seller_trust):.1f}/10" if seller_trust is not None else "10.0/10"
+            if listing_type == "exchange":
+                exchange_desc = f'<div>📤 <strong>Item to give:</strong> {html.escape(item_offer or "—")}</div><div style="margin-top: 4px;">📥 <strong>Item to receive:</strong> {html.escape(item_want or "—")}</div>'
+            else:
+                exchange_desc = desc_inner_html
 
-                # ── 4. CONDITIONAL HOOK FOR LESS VISIBLE TOGGLES ──────────────
-                char_limit = 80
-                
-                if description_clean:
-                    if len(description_clean) <= char_limit:
-                        desc_inner_html = f'{description_clean}'
-                    else:
-                        desc_inner_html = f"""
-                        <input type="checkbox" id="toggle_{item_id}" class="desc-toggle">
-                        <span class="desc-short">{description_clean[:char_limit]}...</span>
-                        <span class="desc-full">{description_clean}</span>
-                        <label for="toggle_{item_id}" class="desc-label">Read</label>
-                        """
-                else:
-                    desc_inner_html = '<span style="font-style: italic; color:#a3a3a3;">No description provided.</span>'
-
-                # Complete composite card payload string block execution
-                full_card_html = f"""
-                <div class="mp-card">
-                    <p class="mp-card-title">{item_name_safe}</p>
-                    <div class="mp-card-meta">{badge_html}{expiry_badge_html}</div>
-                    <div class="mp-card-row">📍 <strong>Region:</strong> {region}</div>
-                    <div class="mp-card-row">🏷️ <strong>Category:</strong> {category}</div>
-                    <div class="mp-card-row">🔍 <strong>Condition:</strong> {condition}</div>
-                    {price_row}
-                    <p class="mp-card-seller">👤 Listed by <strong>{seller_name_clean}</strong> · ⭐ {trust_str}</p>
-                    <div class="mp-card-desc">
-                    {
-                        (
-                            f"<div>📤 <strong>Item to give:</strong> {html.escape(item_offer or '')}</div>"
-                            f"<div>📥 <strong>Item to receive:</strong> {html.escape(item_want or '')}</div>"
-                        )
-                        if listing_type == "exchange" 
-                        else desc_inner_html
-                    }
-                    </div>
-                 </div>
-                """
-                st.markdown(full_card_html, unsafe_allow_html=True) # 🚀 Keep ONLY this line, aligned with full_card_html above!
+            # Complete composite card payload string block execution (LEFT-FLUSHED TO PREVENT CODE BLOCKS)
+            full_card_html = f"""
+<div class="mp-card">
+{img_tag_html}
+<p class="mp-card-title">{item_name_safe}</p>
+<div class="mp-card-meta">{badge_html}{expiry_badge_html}</div>
+<div class="mp-card-row">📍 <strong>Region:</strong> {region}</div>
+<div class="mp-card-row">🏷️ <strong>Category:</strong> {category}</div>
+<div class="mp-card-row">🔍 <strong>Condition:</strong> {condition}</div>
+{price_row}
+<p class="mp-card-seller">👤 Listed by <strong>{seller_name_clean}</strong> · ⭐ {trust_str}</p>
+<div class="mp-card-desc">
+{exchange_desc}
+</div>
+</div>
+"""
+            cols_cards[col_idx].markdown(full_card_html, unsafe_allow_html=True)
                 
 
             # 📥 RENDERING THE BUTTON ROW BLOCK

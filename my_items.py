@@ -1,4 +1,3 @@
-# my_items.py
 import streamlit as st
 import time
 
@@ -77,14 +76,27 @@ def render_my_items_page(db, user_id, get_transaction_status, _lt_badge):
             buyer_received = item.get("buyer_received", False)
 
             # ─────────────────────────────────────────────
-            # TRANSACTION STATE DISPLAY (NEW LOGIC)
+            # SESSION FLAGS
             # ─────────────────────────────────────────────
 
             completed_key = f"completed_{item_id}"
+            buyer_first_key = f"buyer_first_{item_id}"
+            seller_first_key = f"seller_first_{item_id}"
+
             if completed_key not in st.session_state:
                 st.session_state[completed_key] = False
 
-            # CASE 3: COMPLETE
+            if buyer_first_key not in st.session_state:
+                st.session_state[buyer_first_key] = False
+
+            if seller_first_key not in st.session_state:
+                st.session_state[seller_first_key] = False
+
+            # ─────────────────────────────────────────────
+            # TRANSACTION LOGIC
+            # ─────────────────────────────────────────────
+
+            # CASE 3: FULL COMPLETE
             if seller_shipped and buyer_received:
                 st.success("🎉 Transaction completed!")
 
@@ -98,10 +110,15 @@ def render_my_items_page(db, user_id, get_transaction_status, _lt_badge):
                 st.success("📦 Shipped")
                 st.info("⏳ Waiting for buyer to confirm transaction")
 
-            # CASE 2: buyer received first
-            elif not seller_shipped and buyer_received:
+            # ⭐ CASE 2: buyer confirmed first → SELLER SHOULD GET POPUP
+            elif buyer_received and not seller_shipped:
                 st.info("📦 Received by buyer")
-                st.info("⏳ Waiting for seller to confirm transaction")
+                st.info("⏳ Please confirm shipment")
+
+                if not st.session_state[buyer_first_key]:
+                    st.session_state[buyer_first_key] = True
+                    st.balloons()
+                    st.toast(f"📦 Buyer confirmed {item['item_name']}!", icon="🎉")
 
             # DEFAULT
             else:

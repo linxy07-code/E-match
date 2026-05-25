@@ -96,6 +96,7 @@ def render_cart_page():
             # CASE 1: seller shipped first
             elif seller_shipped and not buyer_received:
                 st.success("📦 Seller has shipped your item! Please confirm receipt.")
+                
 
             # CASE 2: buyer received first (NO POPUP HERE ANYMORE)
             elif not seller_shipped and buyer_received:

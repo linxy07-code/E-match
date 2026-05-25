@@ -568,19 +568,40 @@ class EcoMatchDB:
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
+
+                    # 1. update buyer status
                     cursor.execute("""
                         UPDATE items
                         SET buyer_received = TRUE
                         WHERE id = %s
                     """, (item_id,))
+
+                    # 2. fetch seller + item info
+                    cursor.execute("""
+                        SELECT user_id, item_name
+                        FROM items
+                        WHERE id = %s
+                    """, (item_id,))
+                    item = cursor.fetchone()
+
+                    # 3. NOTIFY SELLER (🔥 THIS WAS MISSING)
+                    cursor.execute("""
+                        INSERT INTO notifications (user_id, title, body)
+                        VALUES (%s, %s, %s)
+                    """, (
+                        item["user_id"],
+                        "📦 Buyer Confirmed Receipt",
+                        f"Buyer has received '{item['item_name']}'. Please ship to complete transaction."
+                    ))
+
                     conn.commit()
 
-            self._check_transaction_complete(item_id)
-            return {"success": True}
+                self._check_transaction_complete(item_id)
+                return {"success": True}
 
         except Exception as e:
             return {"success": False, "error": str(e)}
-
+    
     def _check_transaction_complete(self, item_id, source_table="items"):
         """
         Finalizes transaction ONLY when:
