@@ -83,23 +83,24 @@ def render_marketplace_page():
     }
     .mp-card-seller { font-size:.75rem; color:#737373; margin-top:8px; margin-bottom:4px; }
 
-    /* Custom Image Canvas Frame */
+    /* FIXED DIMS IMAGE CANVAS FRAME - NO CROPPING ALLOWED */
     .mp-img-frame {
         width: 100%;
-        height: 320px; 
+        height: 240px;          /* Perfectly squared/aligned row heights */
         overflow: hidden;
         border-radius: 10px;
         margin-bottom: 12px;
         display: flex;
         align-items: center;
         justify-content: center;
-        background-color: #f8fafc;
+        background-color: #ffffff; /* Seamless blend with image backgrounds */
+        border: 1px solid #f0fdf4;
     }
     .mp-img-frame img {
         width: 100%;
         height: 100%;
-        object-fit: cover; 
-        padding: 0px;
+        object-fit: contain;    /* CRITICAL FIX: Shows 100% of the picture, no cutting! */
+        object-position: center;/* Keeps everything centered */
     }
 
     /* ── PURE CSS PUSH-BUTTON TOGGLE (INSIDE THE CARD CONTAINER) ── */
@@ -130,52 +131,31 @@ def render_marketplace_page():
     """, unsafe_allow_html=True)
 
     # ── Filters ──────────────────────────────────────────────────────────────
-
-    st.markdown("""
-    <style>
-    .filter-align {
-        margin-top: 4px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
     f1, f2, f3, f4 = st.columns([2, 1, 1, 1])
+    search_q = f1.text_input(
+        "Search Marketplace Items", 
+        placeholder="🔍 Search items…", 
+        key="mp_search", 
+        label_visibility="collapsed"
+    )
+    filt_region = f2.selectbox(
+        "Region",
+        ["All Regions", "Johor", "Kedah", "Kelantan", "Melaka", "Negeri Sembilan",
+         "Pahang", "Perak", "Perlis", "Pulau Pinang", "Selangor", "Terengganu",
+         "Sabah", "Sarawak"],
+        key="mp_region",
+    )
+    filt_type = f3.selectbox(
+        "Type",
+        ["All Types", "🆓 Free", "🔄 Exchange", "💵 Sell"],
+        key="mp_type",
+    )
+    filt_condition = f4.selectbox(
+        "Condition",
+        ["All Conditions", "Brand New", "Good", "Second Hand"],
+        key="mp_condition"
+    )
 
-    with f1:
-        st.markdown('<div class="filter-align">', unsafe_allow_html=True)
-
-        search_q = st.text_input(
-            "Search Marketplace Items",
-            placeholder="🔍 Search items…",
-            key="mp_search",
-            label_visibility="collapsed"
-        )
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with f2:
-        filt_region = st.selectbox(
-            "Region",
-            ["All Regions", "Johor", "Kedah", "Kelantan", "Melaka", "Negeri Sembilan",
-             "Pahang", "Perak", "Perlis", "Pulau Pinang", "Selangor", "Terengganu",
-             "Sabah", "Sarawak"],
-            key="mp_region",
-        )
-
-    with f3:
-        filt_type = st.selectbox(
-            "Type",
-            ["All Types", "🆓 Free", "🔄 Exchange", "💵 Sell"],
-            key="mp_type",
-        )
-
-    with f4:
-        filt_condition = st.selectbox(
-            "Condition",
-            ["All Conditions", "Brand New", "Good", "Second Hand"],
-            key="mp_condition"
-        )
-        
     # ── Fetch ─────────────────────────────────────────────────────────────────
     db_result = db.get_all_items(search=search_q if search_q else None)
     if not db_result["success"]:
@@ -226,28 +206,26 @@ def render_marketplace_page():
             raw_desc   = str(item.get('description') or "").strip()
             raw_seller = str(item.get('seller_name') or "Unknown").strip()
 
-            # ── 2. AGGRESSIVE TEXT EXTRACTION FOR CONTAMINATED LOGS ──────────
-            if "<div" in raw_desc or "<p" in raw_desc or "mp-card-desc" in raw_desc:
-                clean_text = html.unescape(raw_desc)
-                inner_segments = re.findall(r'>(?!<)(.*?)(?=<|$)', clean_text)
-                clean_text = " ".join([t.strip() for t in inner_segments if t.strip() and "Item to" not in t])
-                raw_desc = clean_text if clean_text else "No description provided."
-            else:
-                raw_desc = re.sub(r'<[^>]*>', '', raw_desc).strip()
+            # ── 2. BULLETPROOF CLEANING LOGIC FOR CONTAMINATED TEXT STRINGS ───
+            raw_desc = re.sub(r'<[^>]*>', ' ', raw_desc)
+            raw_desc = re.sub(r'(Item to give:|Item to receive:)', ' ', raw_desc, flags=re.IGNORECASE)
+            raw_desc = html.unescape(raw_desc)
+            raw_desc = re.sub(r'\s+', ' ', raw_desc).strip()
 
-            if "<div" in raw_seller or "<p" in raw_seller or "mp-card-seller" in raw_seller:
-                clean_sel = html.unescape(raw_seller)
-                match = re.search(r'Listed by\s*<strong>(.*?)</strong>', clean_sel, re.IGNORECASE)
-                if match:
-                    raw_seller = match.group(1)
-                else:
-                    raw_seller = re.sub(r'<[^>]*>', '', clean_sel)
+            raw_seller = re.sub(r'<[^>]*>', ' ', raw_seller)
+            raw_seller = raw_seller.replace("👤 Listed by", "").replace("Listed by", "")
+            raw_seller = html.unescape(raw_seller)
+            raw_seller = re.sub(r'\s+', ' ', raw_seller).split("·")[0].strip()
 
-            raw_seller = raw_seller.replace("👤 Listed by", "").split("·")[0].strip()
+            if not raw_desc or raw_desc.lower() == "none" or raw_desc == "No description provided.":
+                raw_desc = "No description provided."
+
+            if not raw_seller or raw_seller.lower() == "none":
+                raw_seller = "Unknown User"
 
             # ── 3. SANITIZE CONTENT OUTPUTS FOR DISPLAY ───────────────────────
             item_name_safe = html.escape(str(item.get('item_name', '')))
-            description_clean = html.escape(html.unescape(raw_desc))
+            description_clean = html.escape(raw_desc)
             seller_name_clean = html.escape(raw_seller)
 
             item_offer = ""
@@ -276,7 +254,7 @@ def render_marketplace_page():
             else:
                 price_row = ""
 
-            # ── 5. EMBED DYNAMIC IMAGE ELEMENT IN THE CARD Payloads ───────────
+            # ── 5. EMBED DYNAMIC IMAGE ELEMENT IN THE CARD PAYLOADS ───────────
             img_url = item.get("image_path")
             if img_url:
                 img_tag_html = f'<div class="mp-img-frame"><img src="{img_url}"></div>'
@@ -286,7 +264,7 @@ def render_marketplace_page():
             # ── 6. CONDITIONAL HOOK FOR EXPANDABLE TOGGLES ────────────────────
             char_limit = 80
             
-            if description_clean and description_clean.lower() != "none" and description_clean != "No description provided.":
+            if description_clean != "No description provided.":
                 if len(description_clean) <= char_limit:
                     desc_inner_html = f'{description_clean}'
                 else:
