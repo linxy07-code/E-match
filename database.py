@@ -922,8 +922,11 @@ class EcoMatchDB:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
-                        SELECT TO_CHAR(created_at,'YYYY-MM') AS month, COUNT(*) AS items
-                        FROM items GROUP BY month ORDER BY month
+                        SELECT TO_CHAR(created_at,'Mon') AS month,
+                               COUNT(*) AS matches
+                        FROM claims
+                        GROUP BY month
+                        ORDER BY MIN(created_at)
                     """)
                     return [dict(row) for row in cursor.fetchall()]
         except Exception:
