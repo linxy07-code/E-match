@@ -24,9 +24,12 @@ def render_past_transaction_page(db, user_id):
 
     buyer_tx = [
         t for t in transactions
-        if int(t.get("buyer_id")) == int(user_id)
+        if (
+            t.get("buyer_id") is not None
+            and int(t.get("buyer_id")) == int(user_id)
+        )
     ]
-
+    
     tab1, tab2 = st.tabs(["🏪 Sold", "🛒 Bought"])
 
     def render_card(t, role):
