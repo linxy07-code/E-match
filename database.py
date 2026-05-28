@@ -118,7 +118,6 @@ class EcoMatchDB:
                         created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
-                # migrate any missing columns on company_items
                 for col, definition in [
                     ("exchange_offer", "TEXT"),
                     ("exchange_want",  "TEXT"),
@@ -225,18 +224,16 @@ class EcoMatchDB:
 
                 conn.commit()
 
-    # ── ADD THIS NEW HELPER INSIDE EcoMatchDB CLASS ─────────────────────────────
+    # ── TRANSACTION NOTIFICATIONS HELPER ─────────────────────────────────────
 
     def _create_transaction_notifications(self, item):
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-
-                    buyer_id = item["buyer_id"]
+                    buyer_id  = item["buyer_id"]
                     seller_id = item["user_id"]
                     item_name = item["item_name"]
 
-                    # Seller notification
                     cursor.execute("""
                         INSERT INTO notifications (user_id, title, body)
                         VALUES (%s, %s, %s)
@@ -246,7 +243,6 @@ class EcoMatchDB:
                         f"Waiting for buyer to confirm transaction for '{item_name}'"
                     ))
 
-                    # Buyer notification
                     cursor.execute("""
                         INSERT INTO notifications (user_id, title, body)
                         VALUES (%s, %s, %s)
@@ -257,7 +253,6 @@ class EcoMatchDB:
                     ))
 
                     conn.commit()
-
         except Exception:
             pass
 
@@ -487,7 +482,6 @@ class EcoMatchDB:
                         return {"success": False, "error": "Item not found"}
                     if row["reserved_by"] is not None:
                         return {"success": False, "error": "Already reserved"}
-                    # Always set both reserved_by AND buyer_id together
                     cursor.execute("""
                         UPDATE items SET reserved_by = %s, buyer_id = %s WHERE id = %s
                     """, (user_id, user_id, item_id))
@@ -557,10 +551,8 @@ class EcoMatchDB:
                         WHERE id = %s
                     """, (item_id,))
                     conn.commit()
-
             self._check_transaction_complete(item_id)
             return {"success": True}
-
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -568,23 +560,17 @@ class EcoMatchDB:
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-
-                    # 1. update buyer status
                     cursor.execute("""
                         UPDATE items
                         SET buyer_received = TRUE
                         WHERE id = %s
                     """, (item_id,))
-
-                    # 2. fetch seller + item info
                     cursor.execute("""
                         SELECT user_id, item_name
                         FROM items
                         WHERE id = %s
                     """, (item_id,))
                     item = cursor.fetchone()
-
-                    # 3. NOTIFY SELLER (🔥 THIS WAS MISSING)
                     cursor.execute("""
                         INSERT INTO notifications (user_id, title, body)
                         VALUES (%s, %s, %s)
@@ -593,34 +579,18 @@ class EcoMatchDB:
                         "📦 Buyer Confirmed Receipt",
                         f"Buyer has received '{item['item_name']}'. Please ship to complete transaction."
                     ))
-
                     conn.commit()
-
                 self._check_transaction_complete(item_id)
                 return {"success": True}
-
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     def _check_transaction_complete(self, item_id, source_table="items"):
-        """
-        Finalizes transaction ONLY when:
-        seller_shipped = TRUE AND buyer_received = TRUE
-
-        - inserts into past_transactions (once only)
-        - updates item status
-        - sends notifications (once only)
-
-        FIX: buyer_id falls back to reserved_by if NULL (handles legacy rows
-             where buyer_id was not yet set at reservation time).
-        """
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-
                     table = "company_items" if source_table == "company_items" else "items"
 
-                    # 1. Fetch latest state — include reserved_by as fallback for buyer_id
                     cursor.execute(f"""
                         SELECT
                             id,
@@ -635,21 +605,16 @@ class EcoMatchDB:
                         FROM {table}
                         WHERE id = %s
                     """, (item_id,))
-
                     item = cursor.fetchone()
 
                     if not item:
                         return
 
-                    # 2. Must be fully completed
                     if not (item["seller_shipped"] and item["buyer_received"]):
                         return
 
-                    # 3. Resolve effective buyer_id — fall back to reserved_by if buyer_id is NULL
-                    #    This covers legacy rows reserved before the buyer_id column was added.
                     effective_buyer_id = item["buyer_id"] or item["reserved_by"]
 
-                    # 4. Prevent duplicate transaction entry
                     cursor.execute("""
                         SELECT 1 FROM past_transactions
                         WHERE item_id = %s AND source_table = %s
@@ -657,10 +622,8 @@ class EcoMatchDB:
                     """, (item_id, source_table))
 
                     if cursor.fetchone():
-                        return  # already processed
+                        return
 
-                    # 5. Look up usernames so they are stored directly in the record
-                    #    (makes the table human-readable in Supabase without needing joins)
                     buyer_username = None
                     if effective_buyer_id:
                         cursor.execute("SELECT username FROM users WHERE id = %s", (effective_buyer_id,))
@@ -671,7 +634,6 @@ class EcoMatchDB:
                     seller_row = cursor.fetchone()
                     seller_username = seller_row["username"] if seller_row else None
 
-                    # 6. Insert into past_transactions (ONLY ONCE)
                     cursor.execute("""
                         INSERT INTO past_transactions
                             (item_id, buyer_id, seller_id, buyer_username, seller_username,
@@ -679,18 +641,16 @@ class EcoMatchDB:
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
                     """, (
                         item_id,
-                        effective_buyer_id,   # ← fixed: never NULL
+                        effective_buyer_id,
                         item["user_id"],
-                        buyer_username,        # ← human-readable buyer name
-                        seller_username,       # ← human-readable seller name
+                        buyer_username,
+                        seller_username,
                         item["item_name"],
                         item["price"],
                         item["listing_type"],
                         source_table,
                     ))
 
-                    # 7. If buyer_id was NULL on the item row, backfill it now so future
-                    #    queries are consistent
                     if item["buyer_id"] is None and effective_buyer_id is not None:
                         cursor.execute(f"""
                             UPDATE {table}
@@ -698,7 +658,6 @@ class EcoMatchDB:
                             WHERE id = %s
                         """, (effective_buyer_id, item_id))
 
-                    # 8. Update item to completed
                     cursor.execute(f"""
                         UPDATE {table}
                         SET status = 'completed',
@@ -707,7 +666,6 @@ class EcoMatchDB:
                         WHERE id = %s
                     """, (item_id,))
 
-                    # 9. Notifications (buyer + seller)
                     if effective_buyer_id:
                         cursor.execute("""
                             INSERT INTO notifications (user_id, title, body)
@@ -992,8 +950,7 @@ class EcoMatchDB:
 
     def get_past_transactions(self, user_id):
         try:
-            user_id = str(user_id)  # convert to string since DB is TEXT
-
+            user_id = str(user_id)
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
@@ -1001,10 +958,8 @@ class EcoMatchDB:
                         WHERE buyer_id = %s OR seller_id = %s
                         ORDER BY completed_at DESC
                     """, (user_id, user_id))
-
                     rows = cursor.fetchall()
                     return {"transactions": [dict(r) for r in rows]}
-
         except Exception as e:
             import traceback
             st.error("DB ERROR in get_past_transactions")
@@ -1020,20 +975,14 @@ class EcoMatchDB:
                         FROM items
                         WHERE id = %s
                     """, (item_id,))
-
                     row = cursor.fetchone()
-
                     if not row:
                         return False
-
                     if row["reserved_by"] is not None:
                         return True
-
                     if row["status"] in ["reserved", "waiting_seller", "waiting_buyer"]:
                         return True
-
             return False
-
         except Exception:
             return False
 
@@ -1174,6 +1123,22 @@ class EcoMatchDB:
                     cursor.execute(
                         "UPDATE company_items SET buyer_received = TRUE WHERE id = %s", (item_id,)
                     )
+                    cursor.execute("""
+                        SELECT user_id, item_name
+                        FROM company_items
+                        WHERE id = %s
+                    """, (item_id,))
+                    item = cursor.fetchone()
+                    if item:
+                        cursor.execute("""
+                            INSERT INTO notifications (user_id, title, body)
+                            VALUES (%s, %s, %s)
+                        """, (
+                            item["user_id"],
+                            "📦 Buyer Confirmed Receipt",
+                            f"Buyer has received '{item['item_name']}'. "
+                            f"Please confirm shipment to complete the transaction."
+                        ))
                     conn.commit()
             self._check_transaction_complete(item_id, source_table="company_items")
             return {"success": True}
@@ -1190,7 +1155,6 @@ class EcoMatchDB:
                         return {"success": False, "error": "Item not found"}
                     if row["reserved_by"] is not None:
                         return {"success": False, "error": "Already reserved"}
-                    # Always set both reserved_by AND buyer_id together
                     cursor.execute("""
                         UPDATE company_items SET reserved_by = %s, buyer_id = %s WHERE id = %s
                     """, (user_id, user_id, item_id))
@@ -1239,7 +1203,6 @@ class EcoMatchDB:
                 with conn.cursor() as cursor:
                     stats = {}
 
-                    # ── 1. TOTAL LISTINGS ─────────────────────────────
                     cursor.execute("""
                         SELECT COUNT(*) AS count
                         FROM company_items
@@ -1247,7 +1210,6 @@ class EcoMatchDB:
                     """, (user_id,))
                     stats["total_listings"] = cursor.fetchone()["count"] or 0
 
-                    # ── 2. NEAR EXPIRY ────────────────────────────────
                     cursor.execute("""
                         SELECT COUNT(*) AS count
                         FROM company_items
@@ -1255,13 +1217,12 @@ class EcoMatchDB:
                           AND is_active = 1
                           AND expiry_date IS NOT NULL
                           AND expiry_date <> ''
-                          AND TO_DATE(expiry_date, 'YYYY-MM-DD') 
-                              BETWEEN CURRENT_DATE 
+                          AND TO_DATE(expiry_date, 'YYYY-MM-DD')
+                              BETWEEN CURRENT_DATE
                               AND CURRENT_DATE + INTERVAL '14 days'
                     """, (user_id,))
                     stats["near_expiry"] = cursor.fetchone()["count"] or 0
 
-                    # ── 3. COMPLETED SALES ────────────────────────────
                     cursor.execute("""
                         SELECT COUNT(*) AS count
                         FROM past_transactions
@@ -1270,7 +1231,6 @@ class EcoMatchDB:
                     """, (user_id,))
                     stats["completed_sales"] = cursor.fetchone()["count"] or 0
 
-                    # ── 4. TOTAL REVENUE ──────────────────────────────
                     cursor.execute("""
                         SELECT COALESCE(SUM(price), 0) AS total
                         FROM past_transactions

@@ -135,7 +135,9 @@ def render_company_marketplace(db, user_id):
                         res = db.reserve_company_item(item_id, user_id)
 
                         if res.get("success"):
-                            st.success("Reserved!")
+                            # ── SAME AS PERSONAL: trigger cart popup ──────────
+                            st.session_state["show_cart_popup"] = True
+                            st.session_state["cart_popup_item"] = item.get("item_name", "Item")
                             st.rerun()
                         else:
                             st.error(res.get("error"))

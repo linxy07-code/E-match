@@ -1,16 +1,16 @@
+# company_cart.py  ── drop-in replacement for render_company_cart()
+# Mirrors the EXACT same structure as mycart.py (personal cart)
+
 import streamlit as st
 import re
 import html as html_lib
-from database import EcoMatchDB
-
-db = EcoMatchDB()
 
 
 def render_company_cart(db, user_id):
     st.markdown("""
-    <div class="page-header">
+    <div class="co-header">
         <h1>🛒 My Order Cart</h1>
-        <p>Items you have reserved from the company marketplace</p>
+        <p>Company items you have reserved from the marketplace</p>
     </div>""", unsafe_allow_html=True)
 
     db_result = db.get_company_cart_items(user_id)
@@ -37,16 +37,18 @@ def render_company_cart(db, user_id):
                 )
 
         with col2:
+            item_id      = item["item_id"]
             item_name    = str(item.get("item_name") or "")
-            seller_name  = str(item.get("seller_name") or "Unknown")
-            company_name = str(item.get("company_name") or "")
+            seller_name  = str(item.get("company_name") or item.get("seller_name") or "Unknown")
             region       = str(item.get("region") or "—")
             category     = str(item.get("category") or "—")
             raw_desc     = str(item.get("description") or "No description provided")
+            listing_type = item.get("listing_type") or "sell"
 
             seller_shipped = item.get("seller_shipped", False)
             buyer_received = item.get("buyer_received", False)
 
+            # sanitise description
             raw_desc = re.sub(r"<[^>]+>", "", raw_desc).strip()
             raw_desc = html_lib.unescape(raw_desc)
 
@@ -54,12 +56,10 @@ def render_company_cart(db, user_id):
                 f"RM {float(item['price']):.2f}" if item.get("price") else "Free / Exchange"
             )
 
-            seller_display = f"{seller_name}" + (f" ({company_name})" if company_name else "")
-
-            st.markdown(f"### {html_lib.escape(item_name)}")
+            st.markdown(f"### {item_name}")
 
             info_lines = [
-                f"🏢 **Seller:** {seller_display}",
+                f"🏢 **Company:** {seller_name}",
                 f"📍 **Region:** {region}",
                 f"🏷️ **Category:** {category}",
                 f"💰 **Price:** {price_display}",
@@ -68,48 +68,51 @@ def render_company_cart(db, user_id):
             if item.get("phone_number"):
                 info_lines.append(f"📞 **Contact:** {item['phone_number']}")
 
+            if listing_type == "exchange":
+                offer = item.get("exchange_offer") or "—"
+                want  = item.get("exchange_want")  or "—"
+                info_lines.append(f"🔄 **Offering:** {offer}")
+                info_lines.append(f"🎯 **Wanted:** {want}")
+            else:
+                info_lines.append(f"💬 **Description:** {raw_desc}")
+
             st.markdown("  \n".join(info_lines))
-            st.markdown(f"💬 **Description:** {raw_desc}")
 
-            # ─────────────────────────────────────────────
-            # SAME LOGIC AS PERSONAL CART
-            # ─────────────────────────────────────────────
-
-            item_id = item["item_id"]
+            # ─────────────────────────────────────────────────────────────────
+            # TRANSACTION STATUS  (identical logic to mycart.py)
+            # ─────────────────────────────────────────────────────────────────
 
             completed_key = f"co_txn_completed_{item_id}"
             if completed_key not in st.session_state:
                 st.session_state[completed_key] = False
 
-            received_key = f"co_received_clicked_{item_id}"
-            if received_key not in st.session_state:
-                st.session_state[received_key] = False
-
-            # ⭐ CASE 3: COMPLETED (BOTH TRUE)
+            # CASE 3: both confirmed → COMPLETED
             if seller_shipped and buyer_received:
                 st.success("🎉 Transaction completed!")
-
                 if not st.session_state[completed_key]:
                     st.balloons()
-                    st.session_state["show_txn_complete_dialog"] = True
-                    st.session_state["txn_complete_item"] = item_name
+                    st.toast(f"🎉 {item_name} transaction completed!", icon="✅")
                     st.session_state[completed_key] = True
 
-            # ⭐ CASE 1: seller shipped first
+            # CASE 1: seller shipped first → buyer needs to confirm
             elif seller_shipped and not buyer_received:
                 st.success("📦 Seller has shipped your item! Please confirm receipt.")
 
-            # ⭐ CASE 2: buyer received first (SELLER WILL GET NOTIFIED LATER)
-            elif buyer_received and not seller_shipped:
-                st.info("📦 Received by buyer")
+            # CASE 2: buyer pressed received first → waiting for seller
+            elif not seller_shipped and buyer_received:
                 st.info("⏳ Waiting for seller to confirm shipment")
 
+            # DEFAULT: nothing done yet
             else:
-                st.info("⏳ Waiting for transaction to begin")
+                pass
 
-            # ─────────────────────────────────────────────
-            # ACTION BUTTONS
-            # ─────────────────────────────────────────────
+            # ─────────────────────────────────────────────────────────────────
+            # ACTION BUTTONS  (identical structure to mycart.py)
+            # ─────────────────────────────────────────────────────────────────
+
+            received_key = f"co_received_clicked_{item_id}"
+            if received_key not in st.session_state:
+                st.session_state[received_key] = False
 
             if st.session_state[received_key]:
                 st.info("✅ Receipt confirmed — transaction is being processed.")
@@ -124,13 +127,13 @@ def render_company_cart(db, user_id):
 
                 with b2:
                     if st.button("✅ Received Item", key=f"co_received_{item_id}"):
-
                         result = db.mark_company_item_received(item_id)
 
                         if result.get("success"):
                             st.session_state[received_key] = True
 
-                            # ⭐ ONLY SHOW POPUP IF SELLER ALREADY SHIPPED
+                            # ONLY show completion popup when BOTH sides confirmed
+                            # (mirrors mycart.py: checks seller_shipped before popping)
                             if seller_shipped:
                                 st.balloons()
                                 st.session_state["show_txn_complete_dialog"] = True
