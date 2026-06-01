@@ -603,7 +603,7 @@ else:
     # ── NOTIFICATIONS helper (shared) ─────────────────────────────────────────
     def _render_notifications():
         header_style = (
-            '<div class="co-header" style="background:linear-gradient(135deg,#1e3a5f,#0d6efd)">'
+            '<div class="co-header" style="background:linear-gradient(135deg,#1e3a5f,#0d6efd); border-radius: 14px 14px 0 0; padding: 32px 36px;">'
             '<h1 style="font-family:Fraunces,serif;color:#fff;font-size:2rem;margin:0 0 6px">🔔 Notifications</h1>'
             '<p style="color:rgba(255,255,255,.75);margin:0">Updates for your account</p></div>'
         ) if user_type == "Company" else (
