@@ -47,6 +47,19 @@ def render_marketplace_page():
     # ── CSS injected once ────────────────────────────────────────────────────
     st.markdown("""
     <style>
+    /* Baseline Flexbox Alignment for Filters */
+    [data-testid="stHorizontalBlock"] {
+        align-items: flex-end !important;
+    }
+    
+    /* Clean up Filter Label hierarchy styling */
+    [data-testid="stWidgetLabel"] p {
+        font-size: 0.85rem !important;
+        color: #475569 !important;
+        font-weight: 500 !important;
+        margin-bottom: 4px !important;
+    }
+
     /* Badges */
     .mp-badge {
         display: inline-block; font-size: .75rem; font-weight: 700;
@@ -131,30 +144,38 @@ def render_marketplace_page():
     """, unsafe_allow_html=True)
 
     # ── Filters ──────────────────────────────────────────────────────────────
-    f1, f2, f3, f4 = st.columns([2, 1, 1, 1])
-    search_q = f1.text_input(
-        "Search Marketplace Items", 
-        placeholder="🔍 Search items…", 
-        key="mp_search", 
-        label_visibility="collapsed"
-    )
-    filt_region = f2.selectbox(
-        "Region",
-        ["All Regions", "Johor", "Kedah", "Kelantan", "Melaka", "Negeri Sembilan",
-         "Pahang", "Perak", "Perlis", "Pulau Pinang", "Selangor", "Terengganu",
-         "Sabah", "Sarawak"],
-        key="mp_region",
-    )
-    filt_type = f3.selectbox(
-        "Type",
-        ["All Types", "🆓 Free", "🔄 Exchange", "💵 Sell"],
-        key="mp_type",
-    )
-    filt_condition = f4.selectbox(
-        "Condition",
-        ["All Conditions", "Brand New", "Good", "Second Hand"],
-        key="mp_condition"
-    )
+    f1, f2, f3, f4 = st.columns([2.5, 1.2, 1.2, 1.2])
+    
+    with f1:
+        search_q = f1.text_input(
+            "Search Marketplace Items", 
+            placeholder="🔍 Search items…", 
+            key="mp_search", 
+            label_visibility="collapsed"
+        )
+        
+    with f2:
+        filt_region = f2.selectbox(
+            "Region",
+            ["All Regions", "Johor", "Kedah", "Kelantan", "Melaka", "Negeri Sembilan",
+             "Pahang", "Perak", "Perlis", "Pulau Pinang", "Selangor", "Terengganu",
+             "Sabah", "Sarawak"],
+            key="mp_region",
+        )
+        
+    with f3:
+        filt_type = f3.selectbox(
+            "Type",
+            ["All Types", "🆓 Free", "🔄 Exchange", "💵 Sell"],
+            key="mp_type",
+        )
+        
+    with f4:
+        filt_condition = f4.selectbox(
+            "Condition",
+            ["All Conditions", "Brand New", "Good", "Second Hand"],
+            key="mp_condition"
+        )
 
     # ── Fetch ─────────────────────────────────────────────────────────────────
     db_result = db.get_all_items(search=search_q if search_q else None)
