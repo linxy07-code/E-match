@@ -273,11 +273,14 @@ def render_company_marketplace(db, user_id):
                     )
                     
                     if st.button(f"✅ Confirm", key=f"co_confirm_{item_id}"):
-                        res = db.reserve_company_item(item_id, user_id, message=msg)
+                        res = db.reserve_company_item(item_id, user_id)
+                        
 
                         if res.get("success"):
-                            st.success("Reserved!")
-                            st.rerun()
+                            st.session_state["show_cart_popup"] = True
+                            st.session_state["cart_popup_item"] = item.get("item_name", "Item")
+                             
+  
                         else:
                             st.error(res.get("error"))
         
