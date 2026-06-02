@@ -16,7 +16,7 @@ from my_items import render_my_items_page
 
 from company_portal import (
     render_company_dashboard,
-    render_company_inventory,
+    render_company_items,
     render_company_upload,
     render_company_marketplace,
     render_company_cart,
@@ -295,11 +295,11 @@ with st.sidebar:
         # ── FIX #2: "My Inventory" → "My Uploads / Items" in sidebar label ──
         if user_type_session == "Company":
             NAV_OPTIONS = [
-                ("🏭  Company Marketplace",  "Company Marketplace"),
+                ("🏭  Company Marketplace",   "Company Marketplace"),
                 ("🛒  My Order Cart",         "Company Cart"),
                 ("📜  Transaction History",   "Company Transactions"),
                 ("📦  Upload Inventory",      "Upload Inventory"),
-                ("🗂️  My Uploads / Items",    "My Inventory"),
+                ("🗂️  My Uploads / Items",    "My Items"),
                 ("🛡️  Trust & Safety",        "Company Trust & Safety"),
                 ("📊  Company Dashboard",     "Company Dashboard"),
                 (notif_label,                 "Notifications"),
@@ -677,8 +677,8 @@ else:
         elif page_key == "Upload Inventory":
             render_company_upload(db, user_id)
 
-        elif page_key == "My Inventory":
-            render_company_inventory(db, user_id)
+        elif page_key == "My Items":
+            render_company_items(db, user_id)
 
         elif page_key == "Company Dashboard":
             render_company_dashboard(db, user_id)

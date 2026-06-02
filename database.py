@@ -1021,7 +1021,7 @@ class EcoMatchDB:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def get_company_inventory(self, user_id):
+    def get_company_items(self, user_id):
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:

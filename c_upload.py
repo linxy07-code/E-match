@@ -14,7 +14,7 @@ def render_company_upload(db, user_id):
         st.balloons()
         st.markdown("""
         <div class="co-header">
-            <h1>🎉 Inventory Listed Successfully!</h1>
+            <h1>🎉 Item Listed Successfully!</h1>
             <p>Your item is now visible on the Company Marketplace</p>
         </div>
         """, unsafe_allow_html=True)
@@ -30,9 +30,9 @@ def render_company_upload(db, user_id):
                 st.rerun()
 
         with col2:
-            if st.button("📦 My Inventory", use_container_width=True):
+            if st.button("📦 My Items", use_container_width=True):
                 st.session_state.co_upload_success = False
-                st.session_state.c_page = "inventory"
+                st.session_state.c_page = "items"
                 st.rerun()
 
         with col3:

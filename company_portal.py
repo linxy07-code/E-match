@@ -2,7 +2,7 @@ import streamlit as st
 
 from c_marketplace import render_company_marketplace
 from c_dashboard import render_company_dashboard
-from c_inventory import render_company_inventory
+from c_myitems import render_company_items
 from c_upload import render_company_upload
 from c_cart import render_company_cart
 from c_transactions import render_company_past_transactions
@@ -17,12 +17,12 @@ def run_company_portal(db, user_id):
 
     choice = st.sidebar.radio(
         "Navigate",
-        ["Dashboard", "My Inventory", "Upload Item", "Marketplace", "Cart", "Transactions"]
+        ["Dashboard", "My Items", "Upload Item", "Marketplace", "Cart", "Transactions"]
     )
 
     mapping = {
         "Dashboard": "dashboard",
-        "My Inventory": "inventory",
+        "My Items": "items",
         "Upload Item": "upload",
         "Marketplace": "marketplace",
         "Cart": "cart",
@@ -34,8 +34,8 @@ def run_company_portal(db, user_id):
     if st.session_state.c_page == "dashboard":
         render_company_dashboard(db, user_id)
 
-    elif st.session_state.c_page == "inventory":
-        render_company_inventory(db, user_id)
+    elif st.session_state.c_page == "items":
+        render_company_items(db, user_id)
 
     elif st.session_state.c_page == "upload":
         render_company_upload(db, user_id)
