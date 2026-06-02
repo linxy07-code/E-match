@@ -6,6 +6,7 @@ from c_myitems import render_company_items
 from c_upload import render_company_upload
 from c_cart import render_company_cart
 from c_transactions import render_company_past_transactions
+from c_my_inventory import render_company_inventory_page
 
 
 def run_company_portal(db, user_id):

@@ -1255,3 +1255,202 @@ class EcoMatchDB:
                 "total_revenue": 0.0,
                 "error": str(e)
             }
+        
+
+    #----------------COMPANY INVENTORY-------------------
+    def get_inventory_by_company(self, company_id):
+        conn = self._get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("""
+            SELECT *
+            FROM inventory
+            WHERE company_id = %s
+            ORDER BY item_name ASC
+        """, (company_id,))
+
+        items = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        return items
+    
+    def add_inventory_item(
+        self,
+        company_id,
+        item_name,
+        category,
+        quantity,
+        unit,
+        supplier=None,
+        expiry_date=None,
+        notes=None
+    ):
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+
+            cur.execute("""
+                INSERT INTO inventory (
+                    company_id,
+                    item_name,
+                    category,
+                    quantity,
+                    unit,
+                    supplier,
+                    expiry_date,
+                    notes
+                )
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (
+                company_id,
+                item_name,
+                category,
+                quantity,
+                unit,
+                supplier,
+                expiry_date,
+                notes
+            ))
+
+            conn.commit()
+
+            cur.close()
+            conn.close()
+
+            return {"success": True}
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        
+    def update_inventory_quantity(
+        self,
+        item_id,
+        user_id,
+        new_quantity,
+        note=None
+    ):
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+
+            cur.execute("""
+                SELECT *
+                FROM inventory
+                WHERE id = %s
+            """, (item_id,))
+
+            item = cur.fetchone()
+
+            if not item:
+                return {"success": False, "error": "Inventory item not found"}
+
+            old_quantity = float(item["quantity"])
+            quantity_used = old_quantity - float(new_quantity)
+
+            cur.execute("""
+                UPDATE inventory
+                SET quantity = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+            """, (
+                new_quantity,
+                item_id
+            ))
+    
+            cur.execute("""
+                INSERT INTO inventory_usage_log (
+                    inventory_id,
+                    company_id,
+                    quantity_used,
+                    note
+                )
+                VALUES (%s,%s,%s,%s)
+            """, (
+                item_id,
+                item["company_id"],
+                quantity_used,
+                note
+            ))
+
+            conn.commit()
+
+            cur.close()
+            conn.close()
+
+            return {"success": True}
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        
+
+    def update_inventory_item(
+        self,
+        item_id,
+        user_id,
+        item_name,
+        category,
+        quantity,
+        unit,
+        supplier=None,
+        expiry_date=None,
+        notes=None
+    ):
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+
+            cur.execute("""
+                UPDATE inventory
+                SET
+                    item_name = %s,
+                    category = %s,
+                    quantity = %s,
+                    unit = %s,
+                    supplier = %s,
+                    expiry_date = %s,
+                    notes = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+            """, (
+                item_name,
+                category,
+                quantity,
+                unit,
+                supplier,
+                expiry_date,
+                notes,
+                item_id
+            ))
+
+            conn.commit()
+
+            cur.close()
+            conn.close()
+
+            return {"success": True}
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        
+
+    def delete_inventory_item(self, item_id, user_id):
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+
+            cur.execute("""
+                DELETE FROM inventory
+                WHERE id = %s
+            """, (item_id,))
+
+            conn.commit()
+    
+            cur.close()
+            conn.close()
+
+            return {"success": True}
+    
+        except Exception as e:
+            return {"success": False, "error": str(e)}

@@ -21,6 +21,7 @@ from company_portal import (
     render_company_marketplace,
     render_company_cart,
     render_company_past_transactions,
+    render_company_inventory_page
 )
 
 from datetime import datetime
@@ -298,6 +299,7 @@ with st.sidebar:
                 ("🏭  Company Marketplace",   "Company Marketplace"),
                 ("🛒  My Order Cart",         "Company Cart"),
                 ("📜  Transaction History",   "Company Transactions"),
+                ("🗂️  My Inventory",          "Company Inventory"),
                 ("📦  Upload Inventory",      "Upload Inventory"),
                 ("🗂️  My Uploads / Items",    "My Items"),
                 ("🛡️  Trust & Safety",        "Company Trust & Safety"),
@@ -676,6 +678,9 @@ else:
 
         elif page_key == "Upload Inventory":
             render_company_upload(db, user_id)
+
+        elif page_key == "Company Inventory":
+            render_company_inventory_page(db, user_id)
 
         elif page_key == "My Items":
             render_company_items(db, user_id)
