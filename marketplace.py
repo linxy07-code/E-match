@@ -143,6 +143,17 @@ def render_marketplace_page():
     </style>
     """, unsafe_allow_html=True)
 
+    # Get current user's region
+    current_user_id = st.session_state.get("user_id")
+
+    user_region = "All Regions"
+
+    if current_user_id:
+        user = db.get_user_by_id(current_user_id)
+
+        if user and user.get("region"):
+            user_region = user["region"]
+            
     # ── Filters ──────────────────────────────────────────────────────────────
     f1, f2, f3, f4 = st.columns([2.5, 1.2, 1.2, 1.2])
     
@@ -155,13 +166,32 @@ def render_marketplace_page():
         )
         
     with f2:
-        filt_region = f2.selectbox(
-            "Region",
-            ["All Regions", "Johor", "Kedah", "Kelantan", "Melaka", "Negeri Sembilan",
-             "Pahang", "Perak", "Perlis", "Pulau Pinang", "Selangor", "Terengganu",
-             "Sabah", "Sarawak"],
-            key="mp_region",
-        )
+        regions = [
+            "All Regions",
+            "Johor",
+            "Kedah",
+            "Kelantan",
+            "Melaka",
+            "Negeri Sembilan",
+            "Pahang",
+            "Perak",
+            "Perlis",
+            "Pulau Pinang",
+            "Selangor",
+            "Terengganu",
+            "Sabah",
+            "Sarawak",
+            "Kuala Lumpur"
+        ]
+
+        default_index = regions.index(user_region) if user_region in regions else 0
+
+    filt_region = f2.selectbox(
+        "Region",
+        regions,
+        index=default_index,
+        key="mp_region"
+    )
         
     with f3:
         filt_type = f3.selectbox(

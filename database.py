@@ -393,6 +393,9 @@ class EcoMatchDB:
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
+
+                    region = (region or "").strip().title()
+                    
                     cursor.execute("""
                         INSERT INTO items
                             (user_id, item_name, category, region, condition, quantity,
@@ -996,6 +999,9 @@ class EcoMatchDB:
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
+
+                    region = (region or "").strip().title()
+
                     cursor.execute("""
                         INSERT INTO company_items
                             (user_id, item_name, stock_name, category, region,
