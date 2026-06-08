@@ -1,4 +1,3 @@
-# c_marketplace.py
 import streamlit as st
 import html
 import re
@@ -79,6 +78,7 @@ def render_company_marketplace(db, user_id):
         background: #fff; border-radius: 20px; border: 1px solid #e2e8f0;
         box-shadow: 0 4px 6px -1px rgba(0,0,0,.04); padding: 20px; margin-bottom: 4px;
         display: flex; flex-direction: column; height: 100%;
+        flex: 1 1 auto; /* Forces structural alignment flexibility across the row */
     }
     .mp-card-title {
         font-size: 1.3rem; font-weight: 700; color: #1e293b;
@@ -93,13 +93,15 @@ def render_company_marketplace(db, user_id):
     
     .mp-card-desc {
         font-size: .9rem; color: #475569; line-height: 1.5;
-        margin-top: 12px; padding-top: 12px; border-top: 1px solid #e2e8f0;
+        margin-top: auto; /* Push down to keep bottom edges level */
+        padding-top: 12px; border-top: 1px solid #e2e8f0;
     }
 
     .mp-img-frame {
         width: 100%; height: 230px; overflow: hidden; border-radius: 14px;
         display: flex; align-items: center; justify-content: center;
-        background-color: #000000; border: 1px solid #e2e8f0;
+        background-color: #ffffff; /* 🌟 FIXED: Changed background from black to white to fix side margins */
+        border: 1px solid #e2e8f0;
     }
     .mp-img-frame img {
         width: 100%; height: 100%; object-fit: contain; object-position: center;
@@ -136,21 +138,9 @@ def render_company_marketplace(db, user_id):
     # ✅ FIXED REGION FILTER (auto user region default)
     with f4:
         regions = [
-            "All Regions",
-            "Johor",
-            "Kedah",
-            "Kelantan",
-            "Kuala Lumpur",
-            "Melaka",
-            "Negeri Sembilan",
-            "Pahang",
-            "Perak",
-            "Perlis",
-            "Pulau Pinang",
-            "Selangor",
-            "Terengganu",
-            "Sabah",
-            "Sarawak"
+            "All Regions", "Johor", "Kedah", "Kelantan", "Kuala Lumpur",
+            "Melaka", "Negeri Sembilan", "Pahang", "Perak", "Perlis",
+            "Pulau Pinang", "Selangor", "Terengganu", "Sabah", "Sarawak"
         ]
 
         default_index = 0
@@ -242,10 +232,6 @@ def render_company_marketplace(db, user_id):
             badge_html = _lt_badge(listing_type, price)
             expiry_badge_html = f'<span class="mp-badge {exp_cls}">{exp_label}</span>'
 
-            price_row = ""
-            if listing_type == "sell" and price:
-                price_row = f'<div class="mp-card-row">💰 <strong>Price:</strong> RM {float(price):.2f}</div>'
-
             img_url = item.get("image_path")
             if img_url:
                 img_tag_html = f'<div class="mp-img-frame"><img src="{img_url}"></div>'
@@ -253,22 +239,22 @@ def render_company_marketplace(db, user_id):
                 img_tag_html = '<div class="mp-img-frame" style="font-size:3rem;">🏭</div>'
 
             if listing_type == "exchange":
-                exchange_desc = f'🔄 <strong>Exchange Item</strong>'
+                exchange_desc = f'🔄 <strong>Exchange Item:</strong> {description_clean}'
             else:
                 exchange_desc = f'📝 <strong>Description:</strong> {description_clean}'
 
-            full_card_html = f"""
-<div class="mp-card">
-    {img_tag_html}
-    <p class="mp-card-title">{item_name_safe}</p>
-    <div>{badge_html}{expiry_badge_html}</div>
-    <div class="mp-card-row">🏢 <strong>Company:</strong> {company_name_clean}</div>
-    <div class="mp-card-row">📍 <strong>Region:</strong> {region}</div>
-    <div class="mp-card-row">🏷️ <strong>Category:</strong> {category}</div>
-    {price_row}
-    <div class="mp-card-desc">{exchange_desc}</div>
-</div>
-"""
+            # ✅ FIXED: Completely removed price_row variable injection here to keep cards even
+            full_card_html = (
+                f'<div class="mp-card">'
+                f'{img_tag_html}'
+                f'<p class="mp-card-title">{item_name_safe}</p>'
+                f'<div>{badge_html}{expiry_badge_html}</div>'
+                f'<div class="mp-card-row">🏢 <strong>Company:</strong> {company_name_clean}</div>'
+                f'<div class="mp-card-row">📍 <strong>Region:</strong> {region}</div>'
+                f'<div class="mp-card-row">🏷️ <strong>Category:</strong> {category}</div>'
+                f'<div class="mp-card-desc">{exchange_desc}</div>'
+                f'</div>'
+            )
             cols_cards[col_idx].markdown(full_card_html, unsafe_allow_html=True)
 
             with cols_buttons[col_idx]:

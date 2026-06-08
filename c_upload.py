@@ -1,7 +1,47 @@
 import streamlit as st
 from c_styles import COMPANY_CSS
 from c_helpers import save_company_image
+from PIL import Image, ImageOps
+import io
 
+
+# ── PILLOW IMAGE STANDARDIZATION HELPER ───────────────────────────────────────
+
+def _process_and_standardize_image(uploaded_file, target_size=(400, 300)):
+    """
+    Opens an uploaded image, fixes orientation, center-crops and resizes it 
+    to target_size, and returns a BytesIO object ready for your save function.
+    """
+    try:
+        # Open image via Pillow
+        img = Image.open(uploaded_file)
+        
+        # Convert to RGB mode if it's PNG or WEBP with transparency
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+            
+        # Automatically rotate if the image metadata contains EXIF rotation info
+        img = ImageOps.exif_transpose(img)
+        
+        # Crop and resize to exactly fill target dimensions (Center Crop method)
+        standardized_img = ImageOps.fit(img, target_size, Image.Resampling.LANCZOS)
+        
+        # Save back into a Byte stream mimicking a native file upload object
+        img_byte_arr = io.BytesIO()
+        standardized_img.save(img_byte_arr, format='JPEG', quality=90)
+        img_byte_arr.seek(0)
+        
+        # Keep name metadata intact for backend compatibility
+        img_byte_arr.name = getattr(uploaded_file, 'name', 'uploaded_image.jpg')
+        return img_byte_arr
+        
+    except Exception as e:
+        # Fallback to original file if processing encounters an error
+        st.warning(f"Image formatting optimized with a warning: {e}")
+        return uploaded_file
+
+
+# ── MAIN COMPONENT PAGE ───────────────────────────────────────────────────────
 
 def render_company_upload(db, user_id):
     st.markdown(COMPANY_CSS, unsafe_allow_html=True)
@@ -159,7 +199,9 @@ def render_company_upload(db, user_id):
         )
 
         if uploaded_file:
-            st.image(uploaded_file, use_container_width=True)
+            # Process and display the same uniform size layout on the screen live!
+            processed_file_preview = _process_and_standardize_image(uploaded_file)
+            st.image(processed_file_preview, use_container_width=True, caption="Standardized Preview (4:3)")
 
     # ── SUBMIT ─────────────────────────────────────────────
     st.markdown("---")
@@ -178,8 +220,10 @@ def render_company_upload(db, user_id):
             st.error("Please enter a valid price.")
             return
 
-        with st.spinner("Uploading item…"):
-            image_url = save_company_image(uploaded_file)
+        with st.spinner("Processing image and uploading item…"):
+            # Format and resize picture dynamically on the fly before cloud upload triggers
+            standard_image_bytes = _process_and_standardize_image(uploaded_file)
+            image_url = save_company_image(standard_image_bytes)
 
         if image_url:
             expiry_str = expiry_date.strftime("%Y-%m-%d") if expiry_date else None
