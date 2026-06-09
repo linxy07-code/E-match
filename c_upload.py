@@ -1,16 +1,18 @@
 import streamlit as st
+import streamlit.components.v1 as components
 from c_styles import COMPANY_CSS
 from c_helpers import save_company_image
 from PIL import Image, ImageOps
 import io
+import re
 
 
 # ── PILLOW IMAGE STANDARDIZATION HELPER ───────────────────────────────────────
 
 def _process_and_standardize_image(uploaded_file, target_size=(400, 300)):
     """
-    Opens an uploaded image, fixes orientation, center-crops and resizes it 
-    to target_size, and returns a BytesIO object ready for your save function.
+    Opens an uploaded image, fits the ENTIRE original image inside a 4:3 canvas
+    without cropping edges, and pads any empty space with a white background.
     """
     try:
         # Open image via Pillow
@@ -23,12 +25,20 @@ def _process_and_standardize_image(uploaded_file, target_size=(400, 300)):
         # Automatically rotate if the image metadata contains EXIF rotation info
         img = ImageOps.exif_transpose(img)
         
-        # Crop and resize to exactly fill target dimensions (Center Crop method)
-        standardized_img = ImageOps.fit(img, target_size, Image.Resampling.LANCZOS)
+        # Scale the image down proportionally so it completely fits inside target_size
+        img.thumbnail(target_size, Image.Resampling.LANCZOS)
+        
+        # Create a blank white 4:3 canvas background
+        padded_img = Image.new("RGB", target_size, color="white")
+        
+        # Perfectly center the scaled original image onto our canvas container
+        paste_x = (target_size[0] - img.size[0]) // 2
+        paste_y = (target_size[1] - img.size[1]) // 2
+        padded_img.paste(img, (paste_x, paste_y))
         
         # Save back into a Byte stream mimicking a native file upload object
         img_byte_arr = io.BytesIO()
-        standardized_img.save(img_byte_arr, format='JPEG', quality=90)
+        padded_img.save(img_byte_arr, format='JPEG', quality=90)
         img_byte_arr.seek(0)
         
         # Keep name metadata intact for backend compatibility
@@ -94,7 +104,7 @@ def render_company_upload(db, user_id):
     </div>
     """, unsafe_allow_html=True)
 
-    # ── FORM (same structure as personal page) ─────────────
+    # ── FORM ───────────────────────────────────────────────
     col_main, col_side = st.columns([2, 1])
 
     with col_main:
@@ -127,11 +137,62 @@ def render_company_upload(db, user_id):
             key="co_quantity"
         )
 
-        phone_number = st.text_input(
-            "Contact Phone Number",
-            placeholder="+60 12-345 6789",
-            key="co_phone"
-        )
+        # ── FIXED: PHONE NUMBER PART (REMOVED + - AND BLOCKED ALPHABETS) ──────
+        st.markdown("<label style='font-size: 14px;'>Contact Phone Number</label>", unsafe_allow_html=True)
+        
+        # Create tight side-by-side components for the prefix and the input field
+        phone_col_prefix, phone_col_input = st.columns([1, 6])
+        
+        with phone_col_prefix:
+            # Displays the locked static prefix vertically aligned with the input box
+            st.markdown("""
+                <div style='padding-top: 6px; font-weight: bold; font-size: 16px; color: #555;'>
+                    +60
+                </div>
+            """, unsafe_allow_html=True)
+            
+        with phone_col_input:
+            # Switched to st.text_input to drop increment/decrement buttons entirely
+            phone_input_raw = st.text_input(
+                "Company Contact Phone Number Label Hidden", 
+                value="", 
+                placeholder="123456789",
+                label_visibility="collapsed",
+                key="co_phone_digits",
+                help="Optional: Let other companies contact you directly for inventory pickup arrangements."
+            )
+            
+            # Browser UI Javascript verification: dynamically restricts entry to real numbers on key press
+            components.html(
+                """
+                <script>
+                const parentDoc = window.parent.document;
+                const inputs = parentDoc.querySelectorAll('input[aria-label="Company Contact Phone Number Label Hidden"]');
+                inputs.forEach(input => {
+                    if (!input.dataset.numericBound) {
+                        input.dataset.numericBound = "true";
+                        
+                        // Drop characters that are not digits right at typing time
+                        input.addEventListener('keypress', function(e) {
+                            if (!/[0-9]/.test(e.key)) {
+                                e.preventDefault();
+                            }
+                        });
+                        
+                        // Sanitize pasted elements completely
+                        input.addEventListener('input', function(e) {
+                            this.value = this.value.replace(/[^0-9]/g, '');
+                        });
+                    }
+                });
+                </script>
+                """,
+                height=0,
+                width=0
+            )
+            
+            # Strip non-digits cleanly for background processing
+            phone_digits = re.sub(r"\D", "", phone_input_raw)
 
         has_expiry = st.checkbox("This item has an expiry date", key="co_has_expiry")
         expiry_date = (
@@ -199,9 +260,14 @@ def render_company_upload(db, user_id):
         )
 
         if uploaded_file:
-            # Process and display the same uniform size layout on the screen live!
+            # 1. Process image to contain full dimensions and pad out empty space
             processed_file_preview = _process_and_standardize_image(uploaded_file)
-            st.image(processed_file_preview, use_container_width=True, caption="Standardized Preview (4:3)")
+            
+            # 2. Open byte stream with PIL to force Streamlit to read custom canvas layout dimensions
+            preview_image = Image.open(processed_file_preview)
+            
+            # 3. Clean layout rendering
+            st.image(preview_image, use_container_width=True, caption="Preview")
 
     # ── SUBMIT ─────────────────────────────────────────────
     st.markdown("---")
@@ -221,12 +287,15 @@ def render_company_upload(db, user_id):
             return
 
         with st.spinner("Processing image and uploading item…"):
-            # Format and resize picture dynamically on the fly before cloud upload triggers
+            # Format and pad picture container perfectly on the fly before cloud storage triggers
             standard_image_bytes = _process_and_standardize_image(uploaded_file)
             image_url = save_company_image(standard_image_bytes)
 
         if image_url:
             expiry_str = expiry_date.strftime("%Y-%m-%d") if expiry_date else None
+            
+            # Parse and merge the +60 prefix safely for database submission
+            final_phone_string = f"+60{phone_digits}" if len(phone_digits) > 0 else None
 
             result = db.add_company_item(
                 user_id=user_id,
@@ -240,7 +309,7 @@ def render_company_upload(db, user_id):
                 description=description,
                 listing_type=listing_type,
                 price=price if listing_type == "sell" else None,
-                phone_number=phone_number.strip() if phone_number else None,
+                phone_number=final_phone_string,
                 exchange_offer=exchange_offer,
                 exchange_want=exchange_want
             )

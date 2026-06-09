@@ -2,9 +2,11 @@
 import cloudinary
 import cloudinary.uploader
 import streamlit as st
+import streamlit.components.v1 as components
 from database import EcoMatchDB
-from PIL import Image
+from PIL import Image, ImageOps
 import io
+import re
 
 db = EcoMatchDB()
 
@@ -18,21 +20,58 @@ cloudinary.config(
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 
 
-def save_uploaded_file(uploaded_file) -> str | None:
-    if uploaded_file is None:
+# ── PILLOW IMAGE CONTAIN & PAD STANDARDIZATION HELPER ──────────────────
+
+def _process_and_standardize_image(uploaded_file, target_size=(400, 300)):
+    """
+    Opens an uploaded image, fits the ENTIRE original image inside a 4:3 canvas
+    without cropping edges, and pads any empty space with a white background.
+    """
+    try:
+        img = Image.open(uploaded_file)
+        
+        # Convert to RGB if it's PNG or WEBP with transparency profiles
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+            
+        # Fix auto-rotation if uploaded from mobile phones via EXIF metadata
+        img = ImageOps.exif_transpose(img)
+        
+        # Scale the image down proportionally so it completely fits inside target_size
+        img.thumbnail(target_size, Image.Resampling.LANCZOS)
+        
+        # Create a blank white 4:3 canvas container
+        padded_img = Image.new("RGB", target_size, color="white")
+        
+        # Perfectly center the scaled original image onto our canvas container
+        paste_x = (target_size[0] - img.size[0]) // 2
+        paste_y = (target_size[1] - img.size[1]) // 2
+        padded_img.paste(img, (paste_x, paste_y))
+        
+        # Save back into a Byte stream mimicking a native file object
+        img_byte_arr = io.BytesIO()
+        padded_img.save(img_byte_arr, format='JPEG', quality=90)
+        img_byte_arr.seek(0)
+        img_byte_arr.name = getattr(uploaded_file, 'name', 'uploaded_image.jpg')
+        return img_byte_arr
+        
+    except Exception as e:
+        # Fallback to the original file silently if an issue occurs
+        return uploaded_file
+
+
+def save_uploaded_file(processed_file) -> str | None:
+    """Accepts the processed image file stream and uploads it to Cloudinary."""
+    if processed_file is None:
         return None
-    ext = uploaded_file.name.rsplit(".", 1)[-1].lower()
+    ext = processed_file.name.rsplit(".", 1)[-1].lower()
     if ext not in ALLOWED_EXTENSIONS:
         st.error(f"❌ Unsupported file type '.{ext}'")
         return None
     try:
         upload_result = cloudinary.uploader.upload(
-            uploaded_file,
-            folder="ecomatch_uploads",
-            transformation=[{
-                "width": 500, "height": 500,
-                "crop": "pad", "background": "white", "gravity": "center"
-            }]
+            processed_file,
+            folder="ecomatch_uploads"
         )
         return upload_result.get("secure_url")
     except Exception as e:
@@ -78,7 +117,7 @@ def render_upload_page():
                     "upload_condition", "upload_quantity", "upload_description",
                     "upload_image_file", "upload_listing_type_label",
                     "upload_price", "upload_has_expiry", "upload_expiry_date",
-                    "upload_phone",
+                    "upload_phone_digits",
                 ]:
                     if key in st.session_state:
                         del st.session_state[key]
@@ -118,15 +157,60 @@ def render_upload_page():
         quantity = st.number_input("Quantity *", min_value=1, value=1, step=1,
                                    key="upload_quantity")
 
-        # ── NEW: Phone Number ─────────────────────────────────────────────────
-        phone_number = st.text_input(
-            "Contact Phone Number",
-            placeholder="+60 12-345 6789",
-            key="upload_phone",
-            help="Optional: Let buyers contact you directly for pickup arrangements."
-        )
-
+        # ── FIXED: PHONE NUMBER PART (REMOVED + - AND BLOCKED ALPHABETS) ──────
+        st.markdown("<label style='font-size: 14px;'>Contact Phone Number</label>", unsafe_allow_html=True)
         
+        phone_col_prefix, phone_col_input = st.columns([1, 6])
+        
+        with phone_col_prefix:
+            st.markdown("""
+                <div style='padding-top: 6px; font-weight: bold; font-size: 16px; color: #555;'>
+                    +60
+                </div>
+            """, unsafe_allow_html=True)
+            
+        with phone_col_input:
+            phone_input_raw = st.text_input(
+                "Contact Phone Number Label Hidden", 
+                value="", 
+                placeholder="123456789",
+                label_visibility="collapsed",
+                key="upload_phone_digits",
+                help="Optional: Let buyers contact you directly for pickup arrangements."
+            )
+            
+            # Instant UI Javascript validation: dynamically filters out non-numbers instantly on keystroke
+            components.html(
+                """
+                <script>
+                const parentDoc = window.parent.document;
+                // Locate the text field elements matching our collapsed label identifier
+                const inputs = parentDoc.querySelectorAll('input[aria-label="Contact Phone Number Label Hidden"]');
+                inputs.forEach(input => {
+                    if (!input.dataset.numericBound) {
+                        input.dataset.numericBound = "true";
+                        
+                        // Prevent alphabetical characters entirely upon typing
+                        input.addEventListener('keypress', function(e) {
+                            if (!/[0-9]/.test(e.key)) {
+                                e.preventDefault();
+                            }
+                        });
+                        
+                        // Handle copy-pasting gracefully by wiping non-digit characters
+                        input.addEventListener('input', function(e) {
+                            this.value = this.value.replace(/[^0-9]/g, '');
+                        });
+                    }
+                });
+                </script>
+                """,
+                height=0,
+                width=0
+            )
+            
+            # Clean non-digit characters on the backend to be absolutely secure
+            phone_digits = re.sub(r"\D", "", phone_input_raw)
 
         has_expiry  = st.checkbox("This item has an expiry date", key="upload_has_expiry")
         expiry_date = (
@@ -169,7 +253,6 @@ def render_upload_page():
                 placeholder="What do you want in exchange?"
             )
 
-            # combine into ONE field for database
             description = f"OFFER: {exchange_offer}\nWANT: {exchange_want}"
 
         else:
@@ -177,7 +260,6 @@ def render_upload_page():
                 "Description",
                 key="upload_description"
             )
-
 
         price = None
         if listing_type == "sell":
@@ -190,6 +272,8 @@ def render_upload_page():
         elif listing_type == "exchange":
             st.info("💡 Describe what you're looking to exchange for in the Description field above.")
 
+    # Container tracking the image side-bar layout
+    processed_file = None
     with col_side:
         st.markdown("#### 🖼️ Item Image")
         uploaded_file = st.file_uploader(
@@ -197,9 +281,16 @@ def render_upload_page():
         )
 
         if uploaded_file:
-            st.image(uploaded_file, caption="Preview", use_container_width=True)
+            # 1. Create the standardized padded image asset bytes stream
+            processed_file = _process_and_standardize_image(uploaded_file)
+            
+            # 2. Convert to an active image object so Streamlit locks onto the 400x300 container
+            preview_image = Image.open(processed_file)
+            
+            # 3. Render clean preview
+            st.image(preview_image, caption="Preview", use_container_width=True)
 
-    # ── POST BUTTON ───────────────────────────────────────────────────────────
+    # ── POST BUTTON & DATA MERGE ──────────────────────────────────────────────
     st.markdown("---")
     if st.button("📤 Post Item", use_container_width=True):
         if not item_name:
@@ -213,10 +304,14 @@ def render_upload_page():
             return
 
         with st.spinner("Uploading item…"):
-            image_url = save_uploaded_file(uploaded_file)
+            image_url = save_uploaded_file(processed_file)
 
         if image_url:
             expiry_str = expiry_date.strftime("%Y-%m-%d") if expiry_date else None
+            
+            # Safely concatenate the fixed Country Prefix string with the digits entered
+            final_phone_string = f"+60{phone_digits}" if len(phone_digits) > 0 else None
+
             result = db.add_item(
                 user_id      = user_id,
                 item_name    = item_name,
@@ -229,7 +324,7 @@ def render_upload_page():
                 description  = description,
                 listing_type = listing_type,
                 price        = price if listing_type == "sell" else None,
-                phone_number = phone_number.strip() if phone_number else None,
+                phone_number = final_phone_string,
                 exchange_offer = exchange_offer,
                 exchange_want  = exchange_want
             )

@@ -500,3 +500,4 @@ def render_company_inventory_page(db, user_id):
                             st.rerun()
 
         st.markdown("---")
+    
