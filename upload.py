@@ -2,11 +2,9 @@
 import cloudinary
 import cloudinary.uploader
 import streamlit as st
-import streamlit.components.v1 as components
 from database import EcoMatchDB
 from PIL import Image, ImageOps
 import io
-import re
 
 db = EcoMatchDB()
 
@@ -28,6 +26,10 @@ def _process_and_standardize_image(uploaded_file, target_size=(400, 300)):
     without cropping edges, and pads any empty space with a white background.
     """
     try:
+        # Reset the source stream pointer before reading
+        if hasattr(uploaded_file, 'seek'):
+            uploaded_file.seek(0)
+            
         img = Image.open(uploaded_file)
         
         # Convert to RGB if it's PNG or WEBP with transparency profiles
@@ -57,6 +59,8 @@ def _process_and_standardize_image(uploaded_file, target_size=(400, 300)):
         
     except Exception as e:
         # Fallback to the original file silently if an issue occurs
+        if hasattr(uploaded_file, 'seek'):
+            uploaded_file.seek(0)
         return uploaded_file
 
 
@@ -157,7 +161,25 @@ def render_upload_page():
         quantity = st.number_input("Quantity *", min_value=1, value=1, step=1,
                                    key="upload_quantity")
 
-        # ── FIXED: PHONE NUMBER PART (REMOVED + - AND BLOCKED ALPHABETS) ──────
+        # ── FIXED: HIDE THE +/- INCREMENT BUTTONS FOR PHONE WIDGET ────────────
+        st.markdown("""
+            <style>
+            /* Hides the complete custom +/- step button interface row */
+            div[data-testid="stNumberInput"] div[role="group"] {
+                display: none !important;
+            }
+            /* Removes standard webkit native input spinner styling arrows */
+            input[type=number]::-webkit-inner-spin-button, 
+            input[type=number]::-webkit-outer-spin-button { 
+                -webkit-appearance: none; 
+                margin: 0; 
+            }
+            input[type=number] {
+                -moz-appearance: textfield;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+
         st.markdown("<label style='font-size: 14px;'>Contact Phone Number</label>", unsafe_allow_html=True)
         
         phone_col_prefix, phone_col_input = st.columns([1, 6])
@@ -170,47 +192,15 @@ def render_upload_page():
             """, unsafe_allow_html=True)
             
         with phone_col_input:
-            phone_input_raw = st.text_input(
+            phone_digits = st.number_input(
                 "Contact Phone Number Label Hidden", 
-                value="", 
-                placeholder="123456789",
+                min_value=0, 
+                value=0, 
+                step=1,
                 label_visibility="collapsed",
                 key="upload_phone_digits",
                 help="Optional: Let buyers contact you directly for pickup arrangements."
             )
-            
-            # Instant UI Javascript validation: dynamically filters out non-numbers instantly on keystroke
-            components.html(
-                """
-                <script>
-                const parentDoc = window.parent.document;
-                // Locate the text field elements matching our collapsed label identifier
-                const inputs = parentDoc.querySelectorAll('input[aria-label="Contact Phone Number Label Hidden"]');
-                inputs.forEach(input => {
-                    if (!input.dataset.numericBound) {
-                        input.dataset.numericBound = "true";
-                        
-                        // Prevent alphabetical characters entirely upon typing
-                        input.addEventListener('keypress', function(e) {
-                            if (!/[0-9]/.test(e.key)) {
-                                e.preventDefault();
-                            }
-                        });
-                        
-                        // Handle copy-pasting gracefully by wiping non-digit characters
-                        input.addEventListener('input', function(e) {
-                            this.value = this.value.replace(/[^0-9]/g, '');
-                        });
-                    }
-                });
-                </script>
-                """,
-                height=0,
-                width=0
-            )
-            
-            # Clean non-digit characters on the backend to be absolutely secure
-            phone_digits = re.sub(r"\D", "", phone_input_raw)
 
         has_expiry  = st.checkbox("This item has an expiry date", key="upload_has_expiry")
         expiry_date = (
@@ -272,8 +262,7 @@ def render_upload_page():
         elif listing_type == "exchange":
             st.info("💡 Describe what you're looking to exchange for in the Description field above.")
 
-    # Container tracking the image side-bar layout
-    processed_file = None
+    # ── IMAGE SIDE-BAR LAYOUT ─────────────────────────────────────────────────
     with col_side:
         st.markdown("#### 🖼️ Item Image")
         uploaded_file = st.file_uploader(
@@ -281,13 +270,9 @@ def render_upload_page():
         )
 
         if uploaded_file:
-            # 1. Create the standardized padded image asset bytes stream
-            processed_file = _process_and_standardize_image(uploaded_file)
-            
-            # 2. Convert to an active image object so Streamlit locks onto the 400x300 container
-            preview_image = Image.open(processed_file)
-            
-            # 3. Render clean preview
+            # Create a separate, isolated file stream layout just to build the UI preview card
+            preview_stream = _process_and_standardize_image(uploaded_file)
+            preview_image = Image.open(preview_stream)
             st.image(preview_image, caption="Preview", use_container_width=True)
 
     # ── POST BUTTON & DATA MERGE ──────────────────────────────────────────────
@@ -304,13 +289,20 @@ def render_upload_page():
             return
 
         with st.spinner("Uploading item…"):
-            image_url = save_uploaded_file(processed_file)
+            # Fresh generation pass right here ensures the binary data is perfectly loaded
+            final_processed_file = _process_and_standardize_image(uploaded_file)
+            
+            # Reset internal file reader indexes to 0 to completely clean up pointer states
+            if hasattr(final_processed_file, 'seek'):
+                final_processed_file.seek(0)
+                
+            image_url = save_uploaded_file(final_processed_file)
 
         if image_url:
             expiry_str = expiry_date.strftime("%Y-%m-%d") if expiry_date else None
             
             # Safely concatenate the fixed Country Prefix string with the digits entered
-            final_phone_string = f"+60{phone_digits}" if len(phone_digits) > 0 else None
+            final_phone_string = f"+60{phone_digits}" if phone_digits > 0 else None
 
             result = db.add_item(
                 user_id      = user_id,
