@@ -1,57 +1,7 @@
 import streamlit as st
-import streamlit.components.v1 as components
 from c_styles import COMPANY_CSS
 from c_helpers import save_company_image
-from PIL import Image, ImageOps
-import io
-import re
 
-
-# ── PILLOW IMAGE STANDARDIZATION HELPER ───────────────────────────────────────
-
-def _process_and_standardize_image(uploaded_file, target_size=(400, 300)):
-    """
-    Opens an uploaded image, fits the ENTIRE original image inside a 4:3 canvas
-    without cropping edges, and pads any empty space with a white background.
-    """
-    try:
-        # Open image via Pillow
-        img = Image.open(uploaded_file)
-        
-        # Convert to RGB mode if it's PNG or WEBP with transparency
-        if img.mode in ("RGBA", "P"):
-            img = img.convert("RGB")
-            
-        # Automatically rotate if the image metadata contains EXIF rotation info
-        img = ImageOps.exif_transpose(img)
-        
-        # Scale the image down proportionally so it completely fits inside target_size
-        img.thumbnail(target_size, Image.Resampling.LANCZOS)
-        
-        # Create a blank white 4:3 canvas background
-        padded_img = Image.new("RGB", target_size, color="white")
-        
-        # Perfectly center the scaled original image onto our canvas container
-        paste_x = (target_size[0] - img.size[0]) // 2
-        paste_y = (target_size[1] - img.size[1]) // 2
-        padded_img.paste(img, (paste_x, paste_y))
-        
-        # Save back into a Byte stream mimicking a native file upload object
-        img_byte_arr = io.BytesIO()
-        padded_img.save(img_byte_arr, format='JPEG', quality=90)
-        img_byte_arr.seek(0)
-        
-        # Keep name metadata intact for backend compatibility
-        img_byte_arr.name = getattr(uploaded_file, 'name', 'uploaded_image.jpg')
-        return img_byte_arr
-        
-    except Exception as e:
-        # Fallback to original file if processing encounters an error
-        st.warning(f"Image formatting optimized with a warning: {e}")
-        return uploaded_file
-
-
-# ── MAIN COMPONENT PAGE ───────────────────────────────────────────────────────
 
 def render_company_upload(db, user_id):
     st.markdown(COMPANY_CSS, unsafe_allow_html=True)
@@ -104,7 +54,7 @@ def render_company_upload(db, user_id):
     </div>
     """, unsafe_allow_html=True)
 
-    # ── FORM ───────────────────────────────────────────────
+    # ── FORM (same structure as personal page) ─────────────
     col_main, col_side = st.columns([2, 1])
 
     with col_main:
@@ -137,62 +87,13 @@ def render_company_upload(db, user_id):
             key="co_quantity"
         )
 
-        # ── FIXED: PHONE NUMBER PART (REMOVED + - AND BLOCKED ALPHABETS) ──────
-        st.markdown("<label style='font-size: 14px;'>Contact Phone Number</label>", unsafe_allow_html=True)
-        
-        # Create tight side-by-side components for the prefix and the input field
-        phone_col_prefix, phone_col_input = st.columns([1, 6])
-        
-        with phone_col_prefix:
-            # Displays the locked static prefix vertically aligned with the input box
-            st.markdown("""
-                <div style='padding-top: 6px; font-weight: bold; font-size: 16px; color: #555;'>
-                    +60
-                </div>
-            """, unsafe_allow_html=True)
-            
-        with phone_col_input:
-            # Switched to st.text_input to drop increment/decrement buttons entirely
-            phone_input_raw = st.text_input(
-                "Company Contact Phone Number Label Hidden", 
-                value="", 
-                placeholder="123456789",
-                label_visibility="collapsed",
-                key="co_phone_digits",
-                help="Optional: Let other companies contact you directly for inventory pickup arrangements."
-            )
-            
-            # Browser UI Javascript verification: dynamically restricts entry to real numbers on key press
-            components.html(
-                """
-                <script>
-                const parentDoc = window.parent.document;
-                const inputs = parentDoc.querySelectorAll('input[aria-label="Company Contact Phone Number Label Hidden"]');
-                inputs.forEach(input => {
-                    if (!input.dataset.numericBound) {
-                        input.dataset.numericBound = "true";
-                        
-                        // Drop characters that are not digits right at typing time
-                        input.addEventListener('keypress', function(e) {
-                            if (!/[0-9]/.test(e.key)) {
-                                e.preventDefault();
-                            }
-                        });
-                        
-                        // Sanitize pasted elements completely
-                        input.addEventListener('input', function(e) {
-                            this.value = this.value.replace(/[^0-9]/g, '');
-                        });
-                    }
-                });
-                </script>
-                """,
-                height=0,
-                width=0
-            )
-            
-            # Strip non-digits cleanly for background processing
-            phone_digits = re.sub(r"\D", "", phone_input_raw)
+        # ── Phone Number (MANDATORY) ──────────────────────────────────────────
+        phone_number = st.text_input(
+            "Contact Phone Number *",
+            placeholder="+60 12-345 6789",
+            key="co_phone",
+            help="Required: Buyers will use this number to arrange pickup or delivery."
+        )
 
         has_expiry = st.checkbox("This item has an expiry date", key="co_has_expiry")
         expiry_date = (
@@ -226,16 +127,20 @@ def render_company_upload(db, user_id):
             st.markdown("#### 🔄 Exchange Details")
 
             exchange_offer = st.text_area(
-                "Item I'm offering *",
-                key="co_exchange_offer"
+                "Item I'm offering * (required for Exchange)",
+                key="co_exchange_offer",
+                placeholder="What are you giving away?"
             )
 
             exchange_want = st.text_area(
-                "Item I want *",
-                key="co_exchange_want"
+                "Item I want * (required for Exchange)",
+                key="co_exchange_want",
+                placeholder="What do you want in exchange?"
             )
 
             description = f"OFFER: {exchange_offer}\nWANT: {exchange_want}"
+
+            st.info("💡 Both exchange fields must be completed before you can submit.")
 
         else:
             description = st.text_area("Description", key="co_description")
@@ -260,42 +165,43 @@ def render_company_upload(db, user_id):
         )
 
         if uploaded_file:
-            # 1. Process image to contain full dimensions and pad out empty space
-            processed_file_preview = _process_and_standardize_image(uploaded_file)
-            
-            # 2. Open byte stream with PIL to force Streamlit to read custom canvas layout dimensions
-            preview_image = Image.open(processed_file_preview)
-            
-            # 3. Clean layout rendering
-            st.image(preview_image, use_container_width=True, caption="Preview")
+            st.image(uploaded_file, use_container_width=True)
 
     # ── SUBMIT ─────────────────────────────────────────────
     st.markdown("---")
 
     if st.button("📤 Post Item", use_container_width=True):
+        # ── VALIDATION ────────────────────────────────────────────────────────
+        errors = []
 
-        if not item_name:
-            st.error("Please enter an item name.")
-            return
+        if not item_name.strip():
+            errors.append("Item name is required.")
 
         if not uploaded_file:
-            st.error("Please upload an image.")
-            return
+            errors.append("Please upload an image.")
+
+        if not phone_number.strip():
+            errors.append("Contact phone number is required.")
 
         if listing_type == "sell" and (price is None or price <= 0):
-            st.error("Please enter a valid price.")
+            errors.append("Please enter a valid price.")
+
+        if listing_type == "exchange":
+            if not exchange_offer or not exchange_offer.strip():
+                errors.append("'Item I'm offering' is required for Exchange listings.")
+            if not exchange_want or not exchange_want.strip():
+                errors.append("'Item I want in return' is required for Exchange listings.")
+
+        if errors:
+            for err in errors:
+                st.error(f"❌ {err}")
             return
 
-        with st.spinner("Processing image and uploading item…"):
-            # Format and pad picture container perfectly on the fly before cloud storage triggers
-            standard_image_bytes = _process_and_standardize_image(uploaded_file)
-            image_url = save_company_image(standard_image_bytes)
+        with st.spinner("Uploading item…"):
+            image_url = save_company_image(uploaded_file)
 
         if image_url:
             expiry_str = expiry_date.strftime("%Y-%m-%d") if expiry_date else None
-            
-            # Parse and merge the +60 prefix safely for database submission
-            final_phone_string = f"+60{phone_digits}" if len(phone_digits) > 0 else None
 
             result = db.add_company_item(
                 user_id=user_id,
@@ -309,7 +215,7 @@ def render_company_upload(db, user_id):
                 description=description,
                 listing_type=listing_type,
                 price=price if listing_type == "sell" else None,
-                phone_number=final_phone_string,
+                phone_number=phone_number.strip() if phone_number else None,
                 exchange_offer=exchange_offer,
                 exchange_want=exchange_want
             )

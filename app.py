@@ -21,7 +21,6 @@ from company_portal import (
     render_company_marketplace,
     render_company_cart,
     render_company_past_transactions,
-    render_company_inventory_page
 )
 
 from datetime import datetime
@@ -53,9 +52,8 @@ for key, default in [
     if key not in st.session_state:
         st.session_state[key] = default
 
-# ── FIX #5: Cookie auto-login (remember me) ───────────────────────────────────
+# ── Cookie auto-login (remember me) ──────────────────────────────────────────
 if not st.session_state.logged_in:
-    # Give cookies a moment to load
     cookies = controller.getAll()
     if not cookies:
         time.sleep(0.3)
@@ -200,7 +198,6 @@ def get_transaction_status(item):
 def normalize_page(page):
     if "Notifications" in page:
         return "Notifications"
-    # strip emoji prefix like "🛒  "
     parts = page.split("  ", 1)
     return parts[-1].strip() if len(parts) > 1 else page.strip()
 
@@ -273,7 +270,6 @@ with st.sidebar:
 
         type_color = "#60a5fa" if user_type_session == "Company" else "#86efac"
         
-        # Display trust score for ALL user types
         trust_line = (
             f'⭐ Trust: <strong style="color:#d1fae5!important">'
             f'{st.session_state.get("trust_score",10)} / 10</strong><br>'
@@ -293,13 +289,11 @@ with st.sidebar:
 
         notif_label = NOTIF_BASE + (f" ({unread})" if unread else "")
 
-        # ── FIX #2: "My Inventory" → "My Uploads / Items" in sidebar label ──
         if user_type_session == "Company":
             NAV_OPTIONS = [
                 ("🏭  Company Marketplace",   "Company Marketplace"),
                 ("🛒  My Order Cart",         "Company Cart"),
                 ("📜  Transaction History",   "Company Transactions"),
-                ("🗂️  My Inventory",          "Company Inventory"),
                 ("📦  Upload Inventory",      "Upload Inventory"),
                 ("🗂️  My Uploads / Items",    "My Items"),
                 ("🛡️  Trust & Safety",        "Company Trust & Safety"),
@@ -333,7 +327,6 @@ with st.sidebar:
 
         st.markdown("---")
         if st.button("🚪 Logout", width="stretch"):
-            # FIX #5: properly clear remember-me cookie on logout
             try:
                 all_cookies = controller.getAll()
                 if "ematch_user" in all_cookies:
@@ -412,7 +405,6 @@ if not st.session_state.logged_in:
             with st.form("login_engine_form", clear_on_submit=False):
                 l_user   = st.text_input("Username", key="l_user")
                 l_pass   = st.text_input("Password", type="password", key="l_pass")
-                # FIX #5: remember me checkbox wired to cookie
                 remember = st.checkbox("Remember me on this device", key="remember_me_chk")
                 login_submitted = st.form_submit_button("Sign In →", width="stretch")
 
@@ -426,7 +418,6 @@ if not st.session_state.logged_in:
                         st.session_state.trust_score = res.get("trust_score", 10)
                         st.session_state.user_type   = res.get("user_type", "Personal")
 
-                        # FIX #5: set cookie as string ID when "remember me" ticked
                         if remember:
                             controller.set("ematch_user", str(res["user_id"]))
 
@@ -443,7 +434,6 @@ if not st.session_state.logged_in:
                         time.sleep(1.5)
                         st.rerun()
                     else:
-                        # FIX #8: friendly error message
                         st.error(f"❌ {res['error']}")
 
         # ── REGISTER ──────────────────────────────────────────────────────────
@@ -478,10 +468,11 @@ if not st.session_state.logged_in:
             )
             st.markdown("---")
 
-            r_user  = st.text_input("Username *",  key="r_user")
-            r_email = st.text_input("Email *",     key="r_email")
-            r_pass  = st.text_input("Password *",  type="password", key="r_pass")
-            r_phone = st.text_input("Phone Number", placeholder="+60 12-345 6789", key="r_phone")
+            r_user  = st.text_input("Username *",       key="r_user")
+            r_email = st.text_input("Email *",          key="r_email")
+            r_pass  = st.text_input("Password *",       type="password", key="r_pass")
+            # ── CHANGED: phone is now mandatory (label has *)
+            r_phone = st.text_input("Phone Number *",   placeholder="+60 12-345 6789", key="r_phone")
             r_reg   = st.selectbox("Region *", [
                 "Selangor","Kuala Lumpur","Penang","Johor",
                 "Melaka","Sabah","Sarawak","Kedah","Kelantan",
@@ -496,11 +487,14 @@ if not st.session_state.logged_in:
                 r_address      = st.text_area("Company Address",   key="r_address", height=80)
 
             if st.button("Create My Account →", width="stretch"):
+                # ── CHANGED: full validation including mandatory phone
                 errors = []
                 if not r_user or not r_email or not r_pass:
-                    errors.append("Please fill in all required fields (*).")
+                    errors.append("Please fill in all required fields (username, email, password).")
                 elif "@" not in r_email or "." not in r_email:
                     errors.append("Please enter a valid email address.")
+                if not r_phone or not r_phone.strip():
+                    errors.append("Phone number is required.")
                 if st.session_state.reg_type == "Company" and not r_company_name:
                     errors.append("Please enter your company name.")
                 if errors:
@@ -535,7 +529,7 @@ else:
     user_id   = st.session_state.get("user_id")
     user_type = st.session_state.get("user_type", "Personal")
 
-    # ── TRANSACTION COMPLETE DIALOG (#6 balloons triggered in mycart/company_cart) ──
+    # ── TRANSACTION COMPLETE DIALOG ───────────────────────────────────────────
     if st.session_state.get("show_txn_complete_dialog"):
         show_transaction_complete_dialog(
             st.session_state.get("txn_complete_item", "your item")
@@ -620,7 +614,6 @@ else:
             st.info("No notifications yet.")
             return
         col_hdr, col_btn = st.columns([3, 1])
-        
         col_hdr.caption(f"{unread_count} unread notification(s)")
         if col_btn.button("✅ Mark all as read", width="stretch"):
             db.mark_notifications_read(user_id); st.rerun()
@@ -678,9 +671,6 @@ else:
 
         elif page_key == "Upload Inventory":
             render_company_upload(db, user_id)
-
-        elif page_key == "Company Inventory":
-            render_company_inventory_page(db, user_id)
 
         elif page_key == "My Items":
             render_company_items(db, user_id)

@@ -3,7 +3,7 @@ import cloudinary
 import cloudinary.uploader
 import streamlit as st
 from database import EcoMatchDB
-from PIL import Image, ImageOps
+from PIL import Image
 import io
 
 db = EcoMatchDB()
@@ -18,64 +18,21 @@ cloudinary.config(
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 
 
-# ── PILLOW IMAGE CONTAIN & PAD STANDARDIZATION HELPER ──────────────────
-
-def _process_and_standardize_image(uploaded_file, target_size=(400, 300)):
-    """
-    Opens an uploaded image, fits the ENTIRE original image inside a 4:3 canvas
-    without cropping edges, and pads any empty space with a white background.
-    """
-    try:
-        # Reset the source stream pointer before reading
-        if hasattr(uploaded_file, 'seek'):
-            uploaded_file.seek(0)
-            
-        img = Image.open(uploaded_file)
-        
-        # Convert to RGB if it's PNG or WEBP with transparency profiles
-        if img.mode in ("RGBA", "P"):
-            img = img.convert("RGB")
-            
-        # Fix auto-rotation if uploaded from mobile phones via EXIF metadata
-        img = ImageOps.exif_transpose(img)
-        
-        # Scale the image down proportionally so it completely fits inside target_size
-        img.thumbnail(target_size, Image.Resampling.LANCZOS)
-        
-        # Create a blank white 4:3 canvas container
-        padded_img = Image.new("RGB", target_size, color="white")
-        
-        # Perfectly center the scaled original image onto our canvas container
-        paste_x = (target_size[0] - img.size[0]) // 2
-        paste_y = (target_size[1] - img.size[1]) // 2
-        padded_img.paste(img, (paste_x, paste_y))
-        
-        # Save back into a Byte stream mimicking a native file object
-        img_byte_arr = io.BytesIO()
-        padded_img.save(img_byte_arr, format='JPEG', quality=90)
-        img_byte_arr.seek(0)
-        img_byte_arr.name = getattr(uploaded_file, 'name', 'uploaded_image.jpg')
-        return img_byte_arr
-        
-    except Exception as e:
-        # Fallback to the original file silently if an issue occurs
-        if hasattr(uploaded_file, 'seek'):
-            uploaded_file.seek(0)
-        return uploaded_file
-
-
-def save_uploaded_file(processed_file) -> str | None:
-    """Accepts the processed image file stream and uploads it to Cloudinary."""
-    if processed_file is None:
+def save_uploaded_file(uploaded_file) -> str | None:
+    if uploaded_file is None:
         return None
-    ext = processed_file.name.rsplit(".", 1)[-1].lower()
+    ext = uploaded_file.name.rsplit(".", 1)[-1].lower()
     if ext not in ALLOWED_EXTENSIONS:
         st.error(f"❌ Unsupported file type '.{ext}'")
         return None
     try:
         upload_result = cloudinary.uploader.upload(
-            processed_file,
-            folder="ecomatch_uploads"
+            uploaded_file,
+            folder="ecomatch_uploads",
+            transformation=[{
+                "width": 500, "height": 500,
+                "crop": "pad", "background": "white", "gravity": "center"
+            }]
         )
         return upload_result.get("secure_url")
     except Exception as e:
@@ -121,7 +78,7 @@ def render_upload_page():
                     "upload_condition", "upload_quantity", "upload_description",
                     "upload_image_file", "upload_listing_type_label",
                     "upload_price", "upload_has_expiry", "upload_expiry_date",
-                    "upload_phone_digits",
+                    "upload_phone",
                 ]:
                     if key in st.session_state:
                         del st.session_state[key]
@@ -161,46 +118,13 @@ def render_upload_page():
         quantity = st.number_input("Quantity *", min_value=1, value=1, step=1,
                                    key="upload_quantity")
 
-        # ── FIXED: HIDE THE +/- INCREMENT BUTTONS FOR PHONE WIDGET ────────────
-        st.markdown("""
-            <style>
-            /* Hides the complete custom +/- step button interface row */
-            div[data-testid="stNumberInput"] div[role="group"] {
-                display: none !important;
-            }
-            /* Removes standard webkit native input spinner styling arrows */
-            input[type=number]::-webkit-inner-spin-button, 
-            input[type=number]::-webkit-outer-spin-button { 
-                -webkit-appearance: none; 
-                margin: 0; 
-            }
-            input[type=number] {
-                -moz-appearance: textfield;
-            }
-            </style>
-        """, unsafe_allow_html=True)
-
-        st.markdown("<label style='font-size: 14px;'>Contact Phone Number</label>", unsafe_allow_html=True)
-        
-        phone_col_prefix, phone_col_input = st.columns([1, 6])
-        
-        with phone_col_prefix:
-            st.markdown("""
-                <div style='padding-top: 6px; font-weight: bold; font-size: 16px; color: #555;'>
-                    +60
-                </div>
-            """, unsafe_allow_html=True)
-            
-        with phone_col_input:
-            phone_digits = st.number_input(
-                "Contact Phone Number Label Hidden", 
-                min_value=0, 
-                value=0, 
-                step=1,
-                label_visibility="collapsed",
-                key="upload_phone_digits",
-                help="Optional: Let buyers contact you directly for pickup arrangements."
-            )
+        # ── Phone Number (MANDATORY) ──────────────────────────────────────────
+        phone_number = st.text_input(
+            "Contact Phone Number *",
+            placeholder="+60 12-345 6789",
+            key="upload_phone",
+            help="Required: Let buyers contact you directly for pickup arrangements."
+        )
 
         has_expiry  = st.checkbox("This item has an expiry date", key="upload_has_expiry")
         expiry_date = (
@@ -232,17 +156,18 @@ def render_upload_page():
             st.markdown("#### 🔄 Exchange Details")
 
             exchange_offer = st.text_area(
-                "Item I'm offering *",
+                "Item I'm offering * (required for Exchange)",
                 key="upload_exchange_offer",
                 placeholder="What are you giving away?"
             )
 
             exchange_want = st.text_area(
-                "Item I want in return *",
+                "Item I want in return * (required for Exchange)",
                 key="upload_exchange_want",
                 placeholder="What do you want in exchange?"
             )
 
+            # combine into ONE field for database
             description = f"OFFER: {exchange_offer}\nWANT: {exchange_want}"
 
         else:
@@ -260,9 +185,8 @@ def render_upload_page():
                 help="Set the price in Malaysian Ringgit (RM)."
             )
         elif listing_type == "exchange":
-            st.info("💡 Describe what you're looking to exchange for in the Description field above.")
+            st.info("💡 Both 'Item I'm offering' and 'Item I want in return' are required for Exchange listings.")
 
-    # ── IMAGE SIDE-BAR LAYOUT ─────────────────────────────────────────────────
     with col_side:
         st.markdown("#### 🖼️ Item Image")
         uploaded_file = st.file_uploader(
@@ -270,40 +194,42 @@ def render_upload_page():
         )
 
         if uploaded_file:
-            # Create a separate, isolated file stream layout just to build the UI preview card
-            preview_stream = _process_and_standardize_image(uploaded_file)
-            preview_image = Image.open(preview_stream)
-            st.image(preview_image, caption="Preview", use_container_width=True)
+            st.image(uploaded_file, caption="Preview", use_container_width=True)
 
-    # ── POST BUTTON & DATA MERGE ──────────────────────────────────────────────
+    # ── POST BUTTON ───────────────────────────────────────────────────────────
     st.markdown("---")
     if st.button("📤 Post Item", use_container_width=True):
-        if not item_name:
-            st.error("Please enter an item name.")
-            return
+        # ── VALIDATION ────────────────────────────────────────────────────────
+        errors = []
+
+        if not item_name.strip():
+            errors.append("Item name is required.")
+
         if not uploaded_file:
-            st.error("Please upload an image.")
-            return
+            errors.append("Please upload an image.")
+
+        if not phone_number.strip():
+            errors.append("Contact phone number is required.")
+
         if listing_type == "sell" and (price is None or price <= 0):
-            st.error("Please enter a valid price.")
+            errors.append("Please enter a valid price.")
+
+        if listing_type == "exchange":
+            if not exchange_offer or not exchange_offer.strip():
+                errors.append("'Item I'm offering' is required for Exchange listings.")
+            if not exchange_want or not exchange_want.strip():
+                errors.append("'Item I want in return' is required for Exchange listings.")
+
+        if errors:
+            for err in errors:
+                st.error(f"❌ {err}")
             return
 
         with st.spinner("Uploading item…"):
-            # Fresh generation pass right here ensures the binary data is perfectly loaded
-            final_processed_file = _process_and_standardize_image(uploaded_file)
-            
-            # Reset internal file reader indexes to 0 to completely clean up pointer states
-            if hasattr(final_processed_file, 'seek'):
-                final_processed_file.seek(0)
-                
-            image_url = save_uploaded_file(final_processed_file)
+            image_url = save_uploaded_file(uploaded_file)
 
         if image_url:
             expiry_str = expiry_date.strftime("%Y-%m-%d") if expiry_date else None
-            
-            # Safely concatenate the fixed Country Prefix string with the digits entered
-            final_phone_string = f"+60{phone_digits}" if phone_digits > 0 else None
-
             result = db.add_item(
                 user_id      = user_id,
                 item_name    = item_name,
@@ -316,7 +242,7 @@ def render_upload_page():
                 description  = description,
                 listing_type = listing_type,
                 price        = price if listing_type == "sell" else None,
-                phone_number = final_phone_string,
+                phone_number = phone_number.strip() if phone_number else None,
                 exchange_offer = exchange_offer,
                 exchange_want  = exchange_want
             )
