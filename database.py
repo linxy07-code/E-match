@@ -382,6 +382,34 @@ class EcoMatchDB:
             return {"success": True}
         except Exception as e:
             return {"success": False, "error": str(e)}
+        
+    def delete_unverified_user(self, user_id):
+        """
+        Permanently delete an unverified account and its OTP record.
+        Called when the user cancels the OTP verification flow.
+        """
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # Safety check — only delete truly unverified accounts
+                    cursor.execute(
+                        "SELECT is_verified FROM users WHERE id = %s", (user_id,)
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        return {"success": False, "error": "User not found"}
+                    if row["is_verified"]:
+                        return {"success": False, "error": "Cannot delete a verified account"}
+                    # Remove OTP record first (FK constraint)
+                    cursor.execute(
+                        "DELETE FROM email_verification WHERE user_id = %s", (user_id,)
+                    )
+                    # Remove the user
+                    cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+                    conn.commit()
+                    return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
     # ── PERSONAL MARKETPLACE ITEMS ────────────────────────────────────────────
 
