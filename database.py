@@ -10,7 +10,7 @@ class EcoMatchDB:
         self.db_url = st.secrets["database"]["connection_string"]
         self._init_db()
 
-    (self):def _get_connection
+    def _get_connection(self):
         return psycopg2.connect(self.db_url, cursor_factory=RealDictCursor)
 
     def _init_db(self):
