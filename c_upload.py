@@ -130,11 +130,27 @@ def render_company_upload(db, user_id):
             key="co_quantity"
         )
 
-        phone_number = st.text_input(
-            "Contact Phone Number",
-            placeholder="+60 12-345 6789",
-            key="co_phone"
-        )
+        st.markdown("#### 📞 Contact Phone Number")
+
+        phone_col_prefix, phone_col_input = st.columns([1, 6])
+
+        with phone_col_prefix:
+            st.markdown("""
+                <div style='padding-top: 6px; font-weight: bold; font-size: 16px; color: #555;'>
+            +60
+                </div>
+            """, unsafe_allow_html=True)
+
+        with phone_col_input:
+            phone_digits = st.number_input(
+                "Contact Phone Number Hidden",
+                min_value=0,
+                value=0,
+                step=1,
+                label_visibility="collapsed",
+                key="co_phone_digits",
+                help="Optional: Let buyers contact your company directly."
+            )
 
         has_expiry = st.checkbox("This item has an expiry date", key="co_has_expiry")
         expiry_date = (
@@ -229,12 +245,18 @@ def render_company_upload(db, user_id):
         if listing_type == "sell" and (price is None or price <= 0):
             st.error("Please enter a valid price.")
             return
+        
+        if phone_digits is None or phone_digits <= 0:
+            st.error("Please enter a contact phone number.")
+            return
 
         with st.spinner("Uploading item…"):
             image_url = save_company_image(uploaded_file)
+            
 
         if image_url:
             expiry_str = expiry_date.strftime("%Y-%m-%d") if expiry_date else None
+            phone_number = f"+60{phone_digits}"
 
             result = db.add_company_item(
                 user_id=user_id,
@@ -248,7 +270,7 @@ def render_company_upload(db, user_id):
                 description=description,
                 listing_type=listing_type,
                 price=price if listing_type == "sell" else None,
-                phone_number=phone_number.strip() if phone_number else None,
+                phone_number=phone_number,
                 exchange_offer=exchange_offer,
                 exchange_want=exchange_want
             )

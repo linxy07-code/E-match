@@ -192,8 +192,8 @@ def render_upload_page(db=None):
         with phone_col_input:
             phone_digits = st.number_input(
                 "Contact Phone Number Label Hidden", 
-                min_value=0, 
-                value=0, 
+                min_value=1, 
+                value=None, 
                 step=1,
                 label_visibility="collapsed",
                 key="upload_phone_digits",
@@ -285,6 +285,9 @@ def render_upload_page(db=None):
         if listing_type == "sell" and (price is None or price <= 0):
             st.error("Please enter a valid price.")
             return
+        if phone_digits is None:
+            st.error("Please enter your phone number.")
+            return
 
         with st.spinner("Uploading item…"):
             # Fresh generation pass right here ensures the binary data is perfectly loaded
@@ -300,7 +303,7 @@ def render_upload_page(db=None):
             expiry_str = expiry_date.strftime("%Y-%m-%d") if expiry_date else None
             
             # Safely concatenate the fixed Country Prefix string with the digits entered
-            final_phone_string = f"+60{phone_digits}" if phone_digits > 0 else None
+            final_phone_string = f"+60{phone_digits}"
 
             result = db.add_item(
                 user_id      = user_id,
