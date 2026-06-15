@@ -26,13 +26,13 @@ def render_company_upload(db, user_id):
         with col1:
             if st.button("🏭 Marketplace", use_container_width=True):
                 st.session_state.co_upload_success = False
-                st.session_state.c_page = "marketplace"
+                st.session_state.current_page = "Company Marketplace"
                 st.rerun()
 
         with col2:
             if st.button("📦 My Items", use_container_width=True):
                 st.session_state.co_upload_success = False
-                st.session_state.c_page = "items"
+                st.session_state.current_page = "My Items"
                 st.rerun()
 
         with col3:
@@ -46,7 +46,46 @@ def render_company_upload(db, user_id):
 
         return
 
-    # ── HEADER ─────────────────────────────────────────────
+    # ── PRE-FILL from near-expiry notification ────────────────────
+    # If the user arrived here via a near-expiry action button,
+    # pick up the pre-filled values and then clear them so they
+    # don't persist across subsequent visits.
+    prefill_listing_label = st.session_state.pop("ne_prefill_listing_label", None)
+    prefill_item_name     = st.session_state.pop("ne_prefill_item_name", None)
+    # Clear the raw value too; the form uses the matching display label.
+    st.session_state.pop("ne_prefill_listing_type", None)
+
+    if prefill_item_name:
+        st.session_state.co_item_name = prefill_item_name
+    if prefill_listing_label:
+        st.session_state.co_listing_type_label = prefill_listing_label
+
+    # ── HEADER ─────────────────────────────────────────────────────
+    if prefill_listing_label:
+        # Show a contextual banner when arriving from a near-expiry alert
+        action_map = {
+            "💵 Sell":            ("💵", "Sell Near-Expiry Item", "#854d0e", "#fef9c3", "#fde68a"),
+            "🆓 Free of Charge":  ("🆓", "Give Away Near-Expiry Item", "#15803d", "#dcfce7", "#bbf7d0"),
+            "🔄 Exchange / Swap": ("🔄", "Barter Near-Expiry Item", "#5b21b6", "#ede9fe", "#c4b5fd"),
+        }
+        icon, action_title, txt_color, bg_color, border_color = action_map.get(
+            prefill_listing_label,
+            ("📋", "Upload Inventory Item", "#1e3a5f", "#eff6ff", "#bfdbfe"),
+        )
+        st.markdown(f"""
+        <div style="background:{bg_color};border:1px solid {border_color};
+        border-left:4px solid {txt_color};border-radius:12px;
+        padding:18px 22px;margin-bottom:20px;">
+            <p style="margin:0;font-weight:700;font-size:1.05rem;color:{txt_color};">
+                {icon} {action_title}
+            </p>
+            <p style="margin:4px 0 0;font-size:.85rem;color:#475569;">
+                The listing type has been pre-selected based on your near-expiry alert.
+                Fill in the remaining details and post the item.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
     st.markdown("""
     <div class="co-header">
         <h1>📋 Upload Inventory Item</h1>
@@ -54,13 +93,17 @@ def render_company_upload(db, user_id):
     </div>
     """, unsafe_allow_html=True)
 
-    # ── FORM (same structure as personal page) ─────────────
+    # ── FORM (same structure as personal page) ─────────────────────
     col_main, col_side = st.columns([2, 1])
 
     with col_main:
         st.markdown("#### 📋 Item Details")
 
-        item_name = st.text_input("Item Name *", key="co_item_name")
+        # Pre-fill item name if we have one from the alert
+        item_name = st.text_input(
+            "Item Name *",
+            key="co_item_name",
+        )
 
         stock_name = st.text_input("Stock Name", key="co_stock_name")
 
@@ -87,12 +130,10 @@ def render_company_upload(db, user_id):
             key="co_quantity"
         )
 
-        # ── Phone Number (MANDATORY) ──────────────────────────────────────────
         phone_number = st.text_input(
-            "Contact Phone Number *",
+            "Contact Phone Number",
             placeholder="+60 12-345 6789",
-            key="co_phone",
-            help="Required: Buyers will use this number to arrange pickup or delivery."
+            key="co_phone"
         )
 
         has_expiry = st.checkbox("This item has an expiry date", key="co_has_expiry")
@@ -107,40 +148,45 @@ def render_company_upload(db, user_id):
         LISTING_TYPE_OPTIONS = {
             "🆓 Free of Charge": "free",
             "🔄 Exchange / Swap": "exchange",
-            "💵 Sell": "sell",
+            "💵 Sell":            "sell",
         }
+
+        option_labels = list(LISTING_TYPE_OPTIONS.keys())
+
+        # Determine default index: use pre-fill if available, else 0
+        if prefill_listing_label and prefill_listing_label in option_labels:
+            default_lt_index = option_labels.index(prefill_listing_label)
+        else:
+            default_lt_index = 0
 
         listing_label = st.radio(
             "How would you like to offer this item? *",
-            list(LISTING_TYPE_OPTIONS.keys()),
+            option_labels,
+            index=default_lt_index,
             horizontal=True,
-            key="co_listing_type_label"
+            key="co_listing_type_label",
         )
 
         listing_type = LISTING_TYPE_OPTIONS[listing_label]
 
         exchange_offer = None
-        exchange_want = None
-        description = ""
+        exchange_want  = None
+        description    = ""
 
         if listing_type == "exchange":
             st.markdown("#### 🔄 Exchange Details")
 
             exchange_offer = st.text_area(
-                "Item I'm offering * (required for Exchange)",
-                key="co_exchange_offer",
-                placeholder="What are you giving away?"
+                "Item I'm offering *",
+                key="co_exchange_offer"
             )
 
             exchange_want = st.text_area(
-                "Item I want * (required for Exchange)",
-                key="co_exchange_want",
-                placeholder="What do you want in exchange?"
+                "Item I want *",
+                key="co_exchange_want"
             )
 
             description = f"OFFER: {exchange_offer}\nWANT: {exchange_want}"
-
-            st.info("💡 Both exchange fields must be completed before you can submit.")
 
         else:
             description = st.text_area("Description", key="co_description")
@@ -167,34 +213,21 @@ def render_company_upload(db, user_id):
         if uploaded_file:
             st.image(uploaded_file, use_container_width=True)
 
-    # ── SUBMIT ─────────────────────────────────────────────
+    # ── SUBMIT ─────────────────────────────────────────────────────
     st.markdown("---")
 
     if st.button("📤 Post Item", use_container_width=True):
-        # ── VALIDATION ────────────────────────────────────────────────────────
-        errors = []
 
-        if not item_name.strip():
-            errors.append("Item name is required.")
+        if not item_name:
+            st.error("Please enter an item name.")
+            return
 
         if not uploaded_file:
-            errors.append("Please upload an image.")
-
-        if not phone_number.strip():
-            errors.append("Contact phone number is required.")
+            st.error("Please upload an image.")
+            return
 
         if listing_type == "sell" and (price is None or price <= 0):
-            errors.append("Please enter a valid price.")
-
-        if listing_type == "exchange":
-            if not exchange_offer or not exchange_offer.strip():
-                errors.append("'Item I'm offering' is required for Exchange listings.")
-            if not exchange_want or not exchange_want.strip():
-                errors.append("'Item I want in return' is required for Exchange listings.")
-
-        if errors:
-            for err in errors:
-                st.error(f"❌ {err}")
+            st.error("Please enter a valid price.")
             return
 
         with st.spinner("Uploading item…"):

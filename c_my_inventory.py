@@ -42,6 +42,18 @@ def _extract_image_and_notes(notes_field):
     return None, notes_field
 
 
+def _open_upload_with_listing(item, listing_label, listing_type):
+    """Prepare the upload form for a near-expiry listing action."""
+    for key in ("co_item_name", "co_listing_type_label"):
+        st.session_state.pop(key, None)
+
+    st.session_state.ne_prefill_listing_label = listing_label
+    st.session_state.ne_prefill_listing_type = listing_type
+    st.session_state.ne_prefill_item_name = item.get("item_name", "")
+    st.session_state.current_page = "Upload Inventory"
+    st.rerun()
+
+
 UNITS = ["kg", "g", "L", "mL", "pcs", "boxes", "cartons", "bags", "bottles", "rolls"]
 CATEGORIES = [
     "Groceries & Food", "Household", "Electronics",
@@ -188,7 +200,7 @@ def render_company_inventory_page(db, user_id):
             st.markdown(f"""
             <div style="background:{bg_color};border:1px solid {border_color};
             border-left:4px solid {banner_color};border-radius:10px;
-            padding:14px 18px;margin-bottom:8px;">
+            padding:14px 18px;margin-bottom:10px;">
                 <b style="color:{txt_color};">
                     {'⚠️' if days > 7 else '🚨'} {it['item_name']}
                     &nbsp;·&nbsp; {qty} {unit}
@@ -199,6 +211,18 @@ def render_company_inventory_page(db, user_id):
                 </p>
             </div>
             """, unsafe_allow_html=True)
+
+            sell_col, free_col, barter_col = st.columns(3)
+            with sell_col:
+                if st.button("💵 Sell", key=f"ne_sell_{it['id']}", use_container_width=True):
+                    _open_upload_with_listing(it, "💵 Sell", "sell")
+            with free_col:
+                if st.button("🆓 Giveaway", key=f"ne_free_{it['id']}", use_container_width=True):
+                    _open_upload_with_listing(it, "🆓 Free of Charge", "free")
+            with barter_col:
+                if st.button("🔄 Barter", key=f"ne_barter_{it['id']}", use_container_width=True):
+                    _open_upload_with_listing(it, "🔄 Exchange / Swap", "exchange")
+
         st.markdown("")
 
     # ── ADD NEW ITEM WITH PREVIEW ─────────────────────────────────────────────
