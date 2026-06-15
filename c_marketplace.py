@@ -46,9 +46,8 @@ def render_company_marketplace(db, user_id):
         unsafe_allow_html=True,
     )
 
-    # ✅ NEW: Get user region from database
-    user_data = db.get_user_by_id(user_id)
-    user_region = (user_data or {}).get("region", "All Regions")
+    # Use the logged-in session region to avoid an extra read on every rerun.
+    user_region = st.session_state.get("region", "All Regions")
 
     # ── CSS Layout Styles ─────────────────────────────────────────────────────
     st.markdown("""
@@ -155,9 +154,13 @@ def render_company_marketplace(db, user_id):
         )
 
     # ── Fetch ─────────────────────────────────────────────────────────────────
+    type_map = {"💵 Sell": "sell", "🆓 Free": "free", "🔄 Exchange": "exchange"}
     db_res = db.get_all_company_items(
         search=search_q if search_q else None,
         category=filt_cat if filt_cat != "All Categories" else None,
+        region=filt_region if filt_region != "All Regions" else None,
+        listing_type=type_map.get(filt_type),
+        exclude_user_id=user_id,
     )
 
     if not db_res.get("success"):
@@ -169,7 +172,6 @@ def render_company_marketplace(db, user_id):
 
     items = [i for i in items if i.get("user_id") != current_user_id]
 
-    type_map = {"💵 Sell": "sell", "🆓 Free": "free", "🔄 Exchange": "exchange"}
     if filt_type in type_map:
         items = [i for i in items if i.get("listing_type") == type_map[filt_type]]
 

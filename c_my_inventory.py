@@ -130,6 +130,22 @@ INVENTORY_CSS = """
     border-bottom: 2px solid #bfdbfe;
     margin-bottom: 16px;
 }
+
+/* ── Wider edit workspace ── */
+.inv-edit-panel {
+    background:#f8fbff;
+    border:1px solid #bfdbfe;
+    border-radius:12px;
+    padding:18px 20px;
+    margin-top:14px;
+    margin-bottom:6px;
+}
+.inv-edit-heading {
+    color:#1e3a5f;
+    font-weight:700;
+    font-size:1rem;
+    margin:0 0 12px 0;
+}
 </style>
 """
 
@@ -392,6 +408,7 @@ def render_company_inventory_page(db, user_id):
             </div>
             """, unsafe_allow_html=True)
 
+            edit_key = f"inv_show_edit_{item_id}"
             action_cols = st.columns([2, 2, 1])
 
             # ── Record Usage ──────────────────────────────────────────────────
@@ -424,45 +441,77 @@ def render_company_inventory_page(db, user_id):
 
             # ── Edit Item Framework ───────────────────────────────────────────
             with action_cols[1]:
-                edit_key = f"inv_show_edit_{item_id}"
                 if st.button("✏️ Edit", key=f"inv_edit_btn_{item_id}", use_container_width=True):
                     st.session_state[edit_key] = not st.session_state.get(edit_key, False)
 
-                if st.session_state.get(edit_key, False):
-                    st.markdown("---")
-                    e_main, e_side = st.columns([2, 1])
-                    with e_main:
-                        edit_name     = st.text_input("Name", value=item["item_name"], key=f"inv_edit_name_{item_id}")
-                        edit_category = st.selectbox(
-                            "Category", CATEGORIES,
-                            index=CATEGORIES.index(cat) if cat in CATEGORIES else 0,
-                            key=f"inv_edit_cat_{item_id}",
-                        )
-                        edit_supplier = st.text_input("Supplier", value=supplier if supplier != "—" else "", key=f"inv_edit_sup_{item_id}")
-                        edit_qty      = st.number_input("Quantity", min_value=0.0, step=1.0, format="%.2f", value=float(qty), key=f"inv_edit_qty_{item_id}")
-                        edit_unit     = st.selectbox("Unit", UNITS, index=UNITS.index(unit) if unit in UNITS else 0, key=f"inv_edit_unit_{item_id}")
-                        
-                        current_expiry = item.get("expiry_date")
-                        has_exp = st.checkbox("Has expiry date", value=bool(current_expiry), key=f"inv_edit_has_exp_{item_id}")
-                        if has_exp:
-                            try:
-                                default_exp = date.fromisoformat(current_expiry) if current_expiry else date.today()
-                            except (ValueError, TypeError):
-                                default_exp = date.today()
-                            edit_expiry = st.date_input("Expiry Date", value=default_exp, key=f"inv_edit_expiry_{item_id}")
-                        else:
-                            edit_expiry = None
+            # ── Delete Entry ──────────────────────────────────────────────────
+            with action_cols[2]:
+                del_confirm_key = f"inv_del_confirm_{item_id}"
+                if not st.session_state.get(del_confirm_key, False):
+                    if st.button("🗑️ Delete", key=f"inv_del_btn_{item_id}", use_container_width=True):
+                        st.session_state[del_confirm_key] = True
+                        st.rerun()
+                else:
+                    st.warning("Delete item?")
+                    d1, d2 = st.columns(2)
+                    with d1:
+                        if st.button("Yes", key=f"inv_del_yes_{item_id}", use_container_width=True):
+                            res = db.delete_inventory_item(item_id, user_id)
+                            if res.get("success"):
+                                st.success("Deleted.")
+                                st.session_state[del_confirm_key] = False
+                                time.sleep(0.3)
+                                st.rerun()
+                            else:
+                                st.error(f"❌ {res.get('error')}")
+                    with d2:
+                        if st.button("No", key=f"inv_del_no_{item_id}", use_container_width=True):
+                            st.session_state[del_confirm_key] = False
+                            st.rerun()
 
-                        edit_notes_input = st.text_area("Notes", value=display_notes, height=60, key=f"inv_edit_notes_{item_id}")
-                        
-                    with e_side:
-                        st.markdown("##### 🖼️ Replace Image")
-                        edit_uploaded = st.file_uploader("Upload new", type=["jpg", "jpeg", "png", "webp"], key=f"inv_edit_img_{item_id}")
-                        if edit_uploaded:
-                            st.image(edit_uploaded, caption="New Image Preview", use_container_width=True)
-                        elif img_url:
-                            st.image(img_url, caption="Current Image", use_container_width=True)
+            if st.session_state.get(edit_key, False):
+                st.markdown("""
+                <div class="inv-edit-panel">
+                    <p class="inv-edit-heading">✏️ Edit Inventory Item</p>
+                </div>
+                """, unsafe_allow_html=True)
 
+                e_details, e_stock, e_image = st.columns([2.2, 1.4, 1.2])
+                with e_details:
+                    edit_name = st.text_input("Name", value=item["item_name"], key=f"inv_edit_name_{item_id}")
+                    edit_category = st.selectbox(
+                        "Category", CATEGORIES,
+                        index=CATEGORIES.index(cat) if cat in CATEGORIES else 0,
+                        key=f"inv_edit_cat_{item_id}",
+                    )
+                    edit_supplier = st.text_input("Supplier", value=supplier if supplier != "—" else "", key=f"inv_edit_sup_{item_id}")
+                    edit_notes_input = st.text_area("Notes", value=display_notes, height=110, key=f"inv_edit_notes_{item_id}")
+
+                with e_stock:
+                    edit_qty = st.number_input("Quantity", min_value=0.0, step=1.0, format="%.2f", value=float(qty), key=f"inv_edit_qty_{item_id}")
+                    edit_unit = st.selectbox("Unit", UNITS, index=UNITS.index(unit) if unit in UNITS else 0, key=f"inv_edit_unit_{item_id}")
+
+                    current_expiry = item.get("expiry_date")
+                    has_exp = st.checkbox("Has expiry date", value=bool(current_expiry), key=f"inv_edit_has_exp_{item_id}")
+                    if has_exp:
+                        try:
+                            default_exp = date.fromisoformat(current_expiry) if current_expiry else date.today()
+                        except (ValueError, TypeError):
+                            default_exp = date.today()
+                        edit_expiry = st.date_input("Expiry Date", value=default_exp, key=f"inv_edit_expiry_{item_id}")
+                    else:
+                        edit_expiry = None
+
+                with e_image:
+                    st.markdown("##### 🖼️ Replace Image")
+                    edit_uploaded = st.file_uploader("Upload new", type=["jpg", "jpeg", "png", "webp"], key=f"inv_edit_img_{item_id}")
+                    if edit_uploaded:
+                        st.image(edit_uploaded, caption="New Image Preview", use_container_width=True)
+                    elif img_url:
+                        st.image(img_url, caption="Current Image", use_container_width=True)
+
+                save_col, spacer_col = st.columns([1, 2])
+                with save_col:
                     if st.button("💾 Save Changes", key=f"inv_save_{item_id}", use_container_width=True):
                         if not edit_name.strip():
                             st.error("Name cannot be empty.")
@@ -497,31 +546,6 @@ def render_company_inventory_page(db, user_id):
                                 st.rerun()
                             else:
                                 st.error(f"❌ {res.get('error', 'Update failed.')}")
-
-            # ── Delete Entry ──────────────────────────────────────────────────
-            with action_cols[2]:
-                del_confirm_key = f"inv_del_confirm_{item_id}"
-                if not st.session_state.get(del_confirm_key, False):
-                    if st.button("🗑️ Delete", key=f"inv_del_btn_{item_id}", use_container_width=True):
-                        st.session_state[del_confirm_key] = True
-                        st.rerun()
-                else:
-                    st.warning("Delete item?")
-                    d1, d2 = st.columns(2)
-                    with d1:
-                        if st.button("Yes", key=f"inv_del_yes_{item_id}", use_container_width=True):
-                            res = db.delete_inventory_item(item_id, user_id)
-                            if res.get("success"):
-                                st.success("Deleted.")
-                                st.session_state[del_confirm_key] = False
-                                time.sleep(0.3)
-                                st.rerun()
-                            else:
-                                st.error(f"❌ {res.get('error')}")
-                    with d2:
-                        if st.button("No", key=f"inv_del_no_{item_id}", use_container_width=True):
-                            st.session_state[del_confirm_key] = False
-                            st.rerun()
 
         st.markdown("---")
     

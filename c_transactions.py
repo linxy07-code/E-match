@@ -1,10 +1,13 @@
 # c_transactions.py
 import streamlit as st
+from c_styles import COMPANY_CSS
 
 
 def render_company_past_transactions(db, user_id):
+    st.markdown(COMPANY_CSS, unsafe_allow_html=True)
+
     st.markdown("""
-    <div class="page-header">
+    <div class="co-header">
         <h1>📜 Transaction History</h1>
         <p>Your company's completed trading history on E-match</p>
     </div>""", unsafe_allow_html=True)

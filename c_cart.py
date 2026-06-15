@@ -4,9 +4,12 @@
 import streamlit as st
 import re
 import html as html_lib
+from c_styles import COMPANY_CSS
 
 
 def render_company_cart(db, user_id):
+    st.markdown(COMPANY_CSS, unsafe_allow_html=True)
+
     st.markdown("""
     <div class="co-header">
         <h1>🛒 My Order Cart</h1>

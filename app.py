@@ -26,15 +26,11 @@ from company_portal import (
 )
 
 from datetime import datetime
-from database import EcoMatchDB
+from database import get_shared_db
 import time
 from streamlit_cookies_controller import CookieController
 
 NOTIF_BASE = "🔔  Notifications"
-
-# ── INITIALIZATION ────────────────────────────────────────────────────────────
-db         = EcoMatchDB()
-controller = CookieController()
 
 st.set_page_config(
     page_title="E-match | Resource Sharing Platform",
@@ -42,6 +38,10 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# ── INITIALIZATION ────────────────────────────────────────────────────────────
+db         = get_shared_db()
+controller = CookieController()
 
 # ── Session state defaults ────────────────────────────────────────────────────
 for key, default in [
@@ -58,9 +58,10 @@ for key, default in [
 if not st.session_state.logged_in:
     # Give cookies a moment to load
     cookies = controller.getAll()
-    if not cookies:
+    if not cookies and not st.session_state.get("cookies_checked_once"):
         time.sleep(0.3)
         cookies = controller.getAll()
+    st.session_state.cookies_checked_once = True
 
     remembered_user_id = cookies.get("ematch_user")
     if remembered_user_id:
@@ -625,9 +626,9 @@ else:
             '<p>Requests and updates from the community</p></div>'
         )
         st.markdown(header_style, unsafe_allow_html=True)
-        notif_res = db.get_notifications(user_id)
+        notif_res = db.get_notifications_with_unread_count(user_id)
         notifs    = notif_res.get("notifications", [])
-        unread_count = db.count_unread_notifications(user_id)
+        unread_count = notif_res.get("unread_count", 0)
         if not notifs:
             st.info("No notifications yet.")
             return
@@ -652,13 +653,13 @@ else:
     # ── PERSONAL PAGES ────────────────────────────────────────────────────────
     if user_type == "Personal":
         if page_key == "Marketplace":
-            render_marketplace_page()
+            render_marketplace_page(db)
 
         elif page_key == "My Cart":
-            render_cart_page()
+            render_cart_page(db)
 
         elif page_key == "Upload Item":
-            render_upload_page()
+            render_upload_page(db)
 
         elif page_key == "My Items":
             render_my_items_page(

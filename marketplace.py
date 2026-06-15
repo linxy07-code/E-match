@@ -3,9 +3,7 @@ import streamlit as st
 import html
 import re
 from datetime import datetime, date
-from database import EcoMatchDB
-
-db = EcoMatchDB()
+from database import get_shared_db
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -37,7 +35,8 @@ def listing_badge_html(listing_type, price=None):
 
 # ── Page ──────────────────────────────────────────────────────────────────────
 
-def render_marketplace_page():
+def render_marketplace_page(db=None):
+    db = db or get_shared_db()
     st.markdown(
         """<div class="page-header"><h1>🛒 Marketplace</h1>
         <p>Browse and request items from the community</p></div>""",
@@ -157,12 +156,7 @@ def render_marketplace_page():
 
     # Get current user's region
     current_user_id = st.session_state.get("user_id")
-    user_region = "All Regions"
-
-    if current_user_id:
-        user = db.get_user_by_id(current_user_id)
-        if user and user.get("region"):
-            user_region = user["region"]
+    user_region = st.session_state.get("region") or "All Regions"
             
     # ── Filters ──────────────────────────────────────────────────────────────
     f1, f2, f3, f4 = st.columns([2.5, 1.2, 1.2, 1.2])
@@ -192,8 +186,16 @@ def render_marketplace_page():
     with f4:
         filt_condition = f4.selectbox("Condition", ["All Conditions", "Brand New", "Good", "Second Hand"], key="mp_condition")
 
+    type_map = {"🆓 Free": "free", "🔄 Exchange": "exchange", "💵 Sell": "sell"}
+
     # ── Fetch ─────────────────────────────────────────────────────────────────
-    db_result = db.get_all_items(search=search_q if search_q else None)
+    db_result = db.get_all_items(
+        search=search_q if search_q else None,
+        region=filt_region if filt_region != "All Regions" else None,
+        listing_type=type_map.get(filt_type),
+        condition=filt_condition if filt_condition != "All Conditions" else None,
+        exclude_user_id=current_user_id,
+    )
     if not db_result["success"]:
         st.error("Could not load items from the database.")
         return
@@ -208,7 +210,6 @@ def render_marketplace_page():
     if filt_region != "All Regions":
         items = [i for i in items if i.get("region") == filt_region or (filt_region == "Pulau Pinang" and i.get("region") == "Penang")]
     
-    type_map = {"🆓 Free": "free", "🔄 Exchange": "exchange", "💵 Sell": "sell"}
     if filt_type in type_map:
         items = [i for i in items if i.get("listing_type") == type_map[filt_type]]
 

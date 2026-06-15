@@ -2,11 +2,9 @@
 import cloudinary
 import cloudinary.uploader
 import streamlit as st
-from database import EcoMatchDB
+from database import get_shared_db
 from PIL import Image, ImageOps
 import io
-
-db = EcoMatchDB()
 
 cloudinary.config(
     cloud_name = st.secrets["cloudinary"]["cloud_name"],
@@ -20,42 +18,41 @@ ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 
 # ── PILLOW IMAGE CONTAIN & PAD STANDARDIZATION HELPER ──────────────────
 
+@st.cache_data(show_spinner=False)
+def _process_image_bytes(file_bytes, file_name, target_size=(400, 300)):
+    source = io.BytesIO(file_bytes)
+    img = Image.open(source)
+
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+
+    img = ImageOps.exif_transpose(img)
+    img.thumbnail(target_size, Image.Resampling.LANCZOS)
+
+    padded_img = Image.new("RGB", target_size, color="white")
+    paste_x = (target_size[0] - img.size[0]) // 2
+    paste_y = (target_size[1] - img.size[1]) // 2
+    padded_img.paste(img, (paste_x, paste_y))
+
+    img_byte_arr = io.BytesIO()
+    padded_img.save(img_byte_arr, format='JPEG', quality=90)
+    img_byte_arr.seek(0)
+    img_byte_arr.name = file_name or "uploaded_image.jpg"
+    return img_byte_arr
+
+
 def _process_and_standardize_image(uploaded_file, target_size=(400, 300)):
     """
     Opens an uploaded image, fits the ENTIRE original image inside a 4:3 canvas
     without cropping edges, and pads any empty space with a white background.
     """
     try:
-        # Reset the source stream pointer before reading
-        if hasattr(uploaded_file, 'seek'):
-            uploaded_file.seek(0)
-            
-        img = Image.open(uploaded_file)
-        
-        # Convert to RGB if it's PNG or WEBP with transparency profiles
-        if img.mode in ("RGBA", "P"):
-            img = img.convert("RGB")
-            
-        # Fix auto-rotation if uploaded from mobile phones via EXIF metadata
-        img = ImageOps.exif_transpose(img)
-        
-        # Scale the image down proportionally so it completely fits inside target_size
-        img.thumbnail(target_size, Image.Resampling.LANCZOS)
-        
-        # Create a blank white 4:3 canvas container
-        padded_img = Image.new("RGB", target_size, color="white")
-        
-        # Perfectly center the scaled original image onto our canvas container
-        paste_x = (target_size[0] - img.size[0]) // 2
-        paste_y = (target_size[1] - img.size[1]) // 2
-        padded_img.paste(img, (paste_x, paste_y))
-        
-        # Save back into a Byte stream mimicking a native file object
-        img_byte_arr = io.BytesIO()
-        padded_img.save(img_byte_arr, format='JPEG', quality=90)
-        img_byte_arr.seek(0)
-        img_byte_arr.name = getattr(uploaded_file, 'name', 'uploaded_image.jpg')
-        return img_byte_arr
+        file_bytes = uploaded_file.getvalue()
+        return _process_image_bytes(
+            file_bytes,
+            getattr(uploaded_file, 'name', 'uploaded_image.jpg'),
+            target_size,
+        )
         
     except Exception as e:
         # Fallback to the original file silently if an issue occurs
@@ -83,7 +80,8 @@ def save_uploaded_file(processed_file) -> str | None:
         return None
 
 
-def render_upload_page():
+def render_upload_page(db=None):
+    db = db or get_shared_db()
     if not st.session_state.get("logged_in"):
         st.warning("⚠️ Please sign in to list an item.")
         st.stop()

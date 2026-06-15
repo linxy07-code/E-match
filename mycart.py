@@ -1,13 +1,12 @@
 # mycart.py
 import streamlit as st
-from database import EcoMatchDB
+from database import get_shared_db
 import re
 import html as html_lib
 
-db = EcoMatchDB()
 
-
-def render_cart_page():
+def render_cart_page(db=None):
+    db = db or get_shared_db()
     st.markdown("""
     <div class="page-header">
         <h1>🛒 My Cart</h1>

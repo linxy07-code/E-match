@@ -222,6 +222,18 @@ class EcoMatchDB:
                     if not cursor.fetchone():
                         cursor.execute(f"ALTER TABLE past_transactions ADD COLUMN {col} {definition}")
 
+                # Index common read paths so page loads and filters avoid table scans.
+                for index_sql in [
+                    "CREATE INDEX IF NOT EXISTS idx_items_marketplace ON items (is_active, reserved_by, user_id, id DESC)",
+                    "CREATE INDEX IF NOT EXISTS idx_items_filters ON items (region, listing_type, condition)",
+                    "CREATE INDEX IF NOT EXISTS idx_company_items_marketplace ON company_items (is_active, reserved_by, user_id, id DESC)",
+                    "CREATE INDEX IF NOT EXISTS idx_company_items_filters ON company_items (region, listing_type, category)",
+                    "CREATE INDEX IF NOT EXISTS idx_notifications_user_read_created ON notifications (user_id, is_read, created_at DESC)",
+                    "CREATE INDEX IF NOT EXISTS idx_past_transactions_buyer ON past_transactions (buyer_id, completed_at DESC)",
+                    "CREATE INDEX IF NOT EXISTS idx_past_transactions_seller ON past_transactions (seller_id, completed_at DESC)",
+                ]:
+                    cursor.execute(index_sql)
+
                 conn.commit()
 
     # ── TRANSACTION NOTIFICATIONS HELPER ─────────────────────────────────────
@@ -441,7 +453,15 @@ class EcoMatchDB:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def get_all_items(self, category=None, search=None):
+    def get_all_items(
+        self,
+        category=None,
+        search=None,
+        region=None,
+        listing_type=None,
+        condition=None,
+        exclude_user_id=None,
+    ):
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -473,12 +493,27 @@ class EcoMatchDB:
                           AND u.user_type = 'Personal'
                     """
                     params = []
+                    if exclude_user_id is not None:
+                        query += " AND i.user_id <> %s"
+                        params.append(exclude_user_id)
                     if category:
                         query += " AND i.category = %s"
                         params.append(category)
                     if search:
                         query += " AND i.item_name ILIKE %s"
                         params.append(f"%{search}%")
+                    if region:
+                        if region in ("Pulau Pinang", "Penang"):
+                            query += " AND i.region IN ('Pulau Pinang', 'Penang')"
+                        else:
+                            query += " AND i.region = %s"
+                            params.append(region)
+                    if listing_type:
+                        query += " AND i.listing_type = %s"
+                        params.append(listing_type)
+                    if condition:
+                        query += " AND i.condition = %s"
+                        params.append(condition)
                     query += " ORDER BY i.id DESC"
                     cursor.execute(query, params)
                     return {"success": True, "items": [dict(row) for row in cursor.fetchall()]}
@@ -811,6 +846,37 @@ class EcoMatchDB:
         except Exception as e:
             return {"success": False, "error": str(e), "notifications": []}
 
+    def get_notifications_with_unread_count(self, user_id):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT id, user_id, title, body, is_read, created_at
+                        FROM notifications
+                        WHERE user_id = %s
+                        ORDER BY created_at DESC
+                        LIMIT 50
+                    """, (user_id,))
+                    notifications = [dict(row) for row in cursor.fetchall()]
+
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM notifications WHERE user_id = %s AND is_read = FALSE",
+                        (user_id,),
+                    )
+                    row = cursor.fetchone()
+                    return {
+                        "success": True,
+                        "notifications": notifications,
+                        "unread_count": int(row["count"]) if row else 0,
+                    }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "notifications": [],
+                "unread_count": 0,
+            }
+
     def mark_notifications_read(self, user_id):
         try:
             with self._get_connection() as conn:
@@ -1074,7 +1140,14 @@ class EcoMatchDB:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def get_all_company_items(self, search=None, category=None):
+    def get_all_company_items(
+        self,
+        search=None,
+        category=None,
+        region=None,
+        listing_type=None,
+        exclude_user_id=None,
+    ):
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -1091,12 +1164,25 @@ class EcoMatchDB:
                         WHERE ci.is_active = 1 AND ci.reserved_by IS NULL
                     """
                     params = []
+                    if exclude_user_id is not None:
+                        query += " AND ci.user_id <> %s"
+                        params.append(exclude_user_id)
                     if category:
                         query += " AND ci.category = %s"
                         params.append(category)
                     if search:
                         query += " AND ci.item_name ILIKE %s"
                         params.append(f"%{search}%")
+                    if region:
+                        target = region.strip().lower()
+                        if target in ("pulau pinang", "penang"):
+                            query += " AND LOWER(TRIM(ci.region)) IN ('pulau pinang', 'penang')"
+                        else:
+                            query += " AND LOWER(TRIM(ci.region)) = %s"
+                            params.append(target)
+                    if listing_type:
+                        query += " AND ci.listing_type = %s"
+                        params.append(listing_type)
                     query += " ORDER BY ci.id DESC"
                     cursor.execute(query, params)
                     return {"success": True, "items": [dict(row) for row in cursor.fetchall()]}
@@ -1482,3 +1568,8 @@ class EcoMatchDB:
     
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+
+@st.cache_resource(show_spinner=False)
+def get_shared_db():
+    return EcoMatchDB()
