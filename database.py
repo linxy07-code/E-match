@@ -11,7 +11,16 @@ class EcoMatchDB:
         self._init_db()
 
     def _get_connection(self):
-        return psycopg2.connect(self.db_url, cursor_factory=RealDictCursor)
+        try:
+            return psycopg2.connect(
+                self.db_url,
+                cursor_factory=RealDictCursor,
+                sslmode="require"
+            )
+        except Exception as e:
+            import streamlit as st
+            st.error(f"Database connection error: {e}")
+            raise
 
     def _init_db(self):
         with self._get_connection() as conn:
