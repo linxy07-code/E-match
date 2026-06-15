@@ -1045,6 +1045,89 @@ class EcoMatchDB:
         except Exception:
             return []
 
+    def get_company_monthly_listings(self):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT TO_CHAR(created_at, 'Mon') AS month,
+                               COUNT(*) AS listings
+                        FROM company_items
+                        GROUP BY month
+                        ORDER BY MIN(created_at)
+                    """)
+                    return [dict(row) for row in cursor.fetchall()]
+        except Exception:
+            return []
+
+    def get_company_monthly_sales(self):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT TO_CHAR(completed_at, 'Mon') AS month,
+                               COUNT(*) AS sales
+                        FROM past_transactions
+                        WHERE source_table = 'company_items'
+                        GROUP BY month
+                        ORDER BY MIN(completed_at)
+                    """)
+                    return [dict(row) for row in cursor.fetchall()]
+        except Exception:
+            return []
+
+    def get_company_sales_by_region(self):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT COALESCE(ci.region, u.region, 'Unknown') AS region,
+                               COUNT(*) AS sales
+                        FROM past_transactions pt
+                        LEFT JOIN company_items ci ON ci.id = pt.item_id
+                        LEFT JOIN users u ON u.id::text = pt.seller_id::text
+                        WHERE pt.source_table = 'company_items'
+                        GROUP BY COALESCE(ci.region, u.region, 'Unknown')
+                        ORDER BY sales DESC
+                    """)
+                    return [dict(row) for row in cursor.fetchall()]
+        except Exception:
+            return []
+
+    def get_company_users_by_region(self):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT region, COUNT(*) AS users
+                        FROM users
+                        WHERE user_type = 'Company'
+                        GROUP BY region
+                        ORDER BY users DESC
+                    """)
+                    return [dict(row) for row in cursor.fetchall()]
+        except Exception:
+            return []
+
+    def get_company_expiring_items(self):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT ci.item_name, ci.category, ci.region, ci.expiry_date,
+                               COALESCE(u.company_name, u.username) AS company
+                        FROM company_items ci
+                        JOIN users u ON ci.user_id = u.id
+                        WHERE ci.is_active = 1
+                          AND ci.expiry_date IS NOT NULL
+                          AND ci.expiry_date <> ''
+                        ORDER BY TO_DATE(ci.expiry_date, 'YYYY-MM-DD') ASC
+                        LIMIT 10
+                    """)
+                    return [dict(row) for row in cursor.fetchall()]
+        except Exception:
+            return []
+
     def get_past_transactions(self, user_id):
         try:
             user_id = str(user_id)
@@ -1346,17 +1429,17 @@ class EcoMatchDB:
                     cursor.execute("""
                         SELECT COUNT(*) AS count
                         FROM past_transactions
-                        WHERE seller_id = %s
+                        WHERE seller_id::text = %s
                           AND source_table = 'company_items'
-                    """, (user_id,))
+                    """, (str(user_id),))
                     stats["completed_sales"] = cursor.fetchone()["count"] or 0
 
                     cursor.execute("""
                         SELECT COALESCE(SUM(price), 0) AS total
                         FROM past_transactions
-                        WHERE seller_id = %s
+                        WHERE seller_id::text = %s
                           AND source_table = 'company_items'
-                    """, (user_id,))
+                    """, (str(user_id),))
                     stats["total_revenue"] = float(cursor.fetchone()["total"] or 0)
 
                     return stats

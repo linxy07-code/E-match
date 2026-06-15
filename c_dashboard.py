@@ -2,6 +2,70 @@ import streamlit as st
 import pandas as pd
 
 
+def _query_rows(db, sql, params=None):
+    try:
+        with db._get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, params or ())
+                return [dict(row) for row in cursor.fetchall()]
+    except Exception:
+        return []
+
+
+def _call_or_query(db, method_name, sql, params=None):
+    try:
+        method = getattr(db, method_name, None)
+        if method:
+            rows = method()
+            if rows:
+                return rows
+    except Exception:
+        pass
+
+    return _query_rows(db, sql, params)
+
+
+def _get_company_stats(db, user_id):
+    rows = _query_rows(db, """
+        SELECT
+            COUNT(*) FILTER (
+                WHERE ci.user_id = %s AND ci.is_active = 1
+            ) AS total_listings,
+            COUNT(*) FILTER (
+                WHERE ci.user_id = %s
+                  AND ci.is_active = 1
+                  AND ci.expiry_date IS NOT NULL
+                  AND ci.expiry_date <> ''
+                  AND TO_DATE(ci.expiry_date, 'YYYY-MM-DD')
+                      BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '14 days'
+            ) AS near_expiry,
+            COUNT(*) FILTER (
+                WHERE ci.user_id = %s
+                  AND ci.is_active = 1
+                  AND ci.created_at >= CURRENT_DATE
+            ) AS listings_delta
+        FROM company_items ci
+    """, (user_id, user_id, user_id))
+
+    stats = dict(rows[0]) if rows else {}
+
+    tx_rows = _query_rows(db, """
+        SELECT COUNT(*) AS completed_sales,
+               COALESCE(SUM(price), 0) AS total_revenue,
+               COUNT(*) FILTER (
+                   WHERE completed_at >= DATE_TRUNC('month', CURRENT_DATE)
+               ) AS sales_delta
+        FROM past_transactions
+        WHERE seller_id::text = %s
+          AND source_table = 'company_items'
+    """, (str(user_id),))
+
+    if tx_rows:
+        stats.update(tx_rows[0])
+
+    return stats
+
+
 def render_company_dashboard(db, user_id):
 
     # ─────────────────────────────────────────────
@@ -20,10 +84,7 @@ def render_company_dashboard(db, user_id):
     # ─────────────────────────────────────────────
     # 1. FETCH COMPANY STATS (same logic style)
     # ─────────────────────────────────────────────
-    try:
-        stats = db.get_company_stats(user_id) or {}
-    except Exception:
-        stats = {}
+    stats = _get_company_stats(db, user_id)
 
     total_listings  = stats.get("total_listings", 0)
     near_expiry     = stats.get("near_expiry", 0)
@@ -70,7 +131,13 @@ def render_company_dashboard(db, user_id):
             st.markdown("Monthly Company Listings")
 
             try:
-                raw = db.get_company_monthly_listings()
+                raw = _call_or_query(db, "get_company_monthly_listings", """
+                    SELECT TO_CHAR(created_at, 'Mon') AS month,
+                           COUNT(*) AS listings
+                    FROM company_items
+                    GROUP BY month
+                    ORDER BY MIN(created_at)
+                """)
                 df = pd.DataFrame({"month": months_labels, "value": [0]*12})
 
                 if raw:
@@ -78,8 +145,9 @@ def render_company_dashboard(db, user_id):
                     y_col = [col for col in db_df.columns if col != "month"][0]
 
                     for _, row in db_df.iterrows():
-                        if str(row["month"]) in months_labels:
-                            df.loc[df["month"] == row["month"], "value"] = row[y_col]
+                        month = str(row["month"]).strip()
+                        if month in months_labels:
+                            df.loc[df["month"] == month, "value"] = row[y_col]
 
             except Exception:
                 df = pd.DataFrame({"month": months_labels, "value": [0]*12})
@@ -90,7 +158,14 @@ def render_company_dashboard(db, user_id):
             st.markdown("Monthly Sales")
 
             try:
-                raw = db.get_company_monthly_sales()
+                raw = _call_or_query(db, "get_company_monthly_sales", """
+                    SELECT TO_CHAR(completed_at, 'Mon') AS month,
+                           COUNT(*) AS sales
+                    FROM past_transactions
+                    WHERE source_table = 'company_items'
+                    GROUP BY month
+                    ORDER BY MIN(completed_at)
+                """)
                 df = pd.DataFrame({"month": months_labels, "value": [0]*12})
 
                 if raw:
@@ -98,8 +173,9 @@ def render_company_dashboard(db, user_id):
                     y_col = [col for col in db_df.columns if col != "month"][0]
 
                     for _, row in db_df.iterrows():
-                        if str(row["month"]) in months_labels:
-                            df.loc[df["month"] == row["month"], "value"] = row[y_col]
+                        month = str(row["month"]).strip()
+                        if month in months_labels:
+                            df.loc[df["month"] == month, "value"] = row[y_col]
 
             except Exception:
                 df = pd.DataFrame({"month": months_labels, "value": [0]*12})
@@ -116,7 +192,16 @@ def render_company_dashboard(db, user_id):
             st.markdown("Sales by Region")
 
             try:
-                raw = db.get_company_sales_by_region()
+                raw = _call_or_query(db, "get_company_sales_by_region", """
+                    SELECT COALESCE(ci.region, u.region, 'Unknown') AS region,
+                           COUNT(*) AS sales
+                    FROM past_transactions pt
+                    LEFT JOIN company_items ci ON ci.id = pt.item_id
+                    LEFT JOIN users u ON u.id::text = pt.seller_id::text
+                    WHERE pt.source_table = 'company_items'
+                    GROUP BY COALESCE(ci.region, u.region, 'Unknown')
+                    ORDER BY sales DESC
+                """)
                 df = pd.DataFrame({"region": region_labels, "value": [0]*len(region_labels)})
 
                 if raw:
@@ -124,8 +209,9 @@ def render_company_dashboard(db, user_id):
                     y_col = [col for col in db_df.columns if col != "region"][0]
 
                     for _, row in db_df.iterrows():
-                        if str(row["region"]) in region_labels:
-                            df.loc[df["region"] == row["region"], "value"] = row[y_col]
+                        region = str(row["region"]).strip()
+                        if region in region_labels:
+                            df.loc[df["region"] == region, "value"] = row[y_col]
 
             except Exception:
                 df = pd.DataFrame({"region": region_labels, "value": [0]*len(region_labels)})
@@ -136,7 +222,13 @@ def render_company_dashboard(db, user_id):
             st.markdown("Users by Region")
 
             try:
-                raw = db.get_company_users_by_region()
+                raw = _call_or_query(db, "get_company_users_by_region", """
+                    SELECT region, COUNT(*) AS users
+                    FROM users
+                    WHERE user_type = 'Company'
+                    GROUP BY region
+                    ORDER BY users DESC
+                """)
                 df = pd.DataFrame({"region": region_labels, "value": [0]*len(region_labels)})
 
                 if raw:
@@ -144,8 +236,9 @@ def render_company_dashboard(db, user_id):
                     y_col = [col for col in db_df.columns if col != "region"][0]
 
                     for _, row in db_df.iterrows():
-                        if str(row["region"]) in region_labels:
-                            df.loc[df["region"] == row["region"], "value"] = row[y_col]
+                        region = str(row["region"]).strip()
+                        if region in region_labels:
+                            df.loc[df["region"] == region, "value"] = row[y_col]
 
             except Exception:
                 df = pd.DataFrame({"region": region_labels, "value": [0]*len(region_labels)})
@@ -159,7 +252,17 @@ def render_company_dashboard(db, user_id):
     st.markdown("### ⏳ Items Approaching Expiry")
 
     try:
-        data = db.get_company_expiring_items()
+        data = _call_or_query(db, "get_company_expiring_items", """
+            SELECT ci.item_name, ci.category, ci.region, ci.expiry_date,
+                   COALESCE(u.company_name, u.username) AS company
+            FROM company_items ci
+            JOIN users u ON ci.user_id = u.id
+            WHERE ci.is_active = 1
+              AND ci.expiry_date IS NOT NULL
+              AND ci.expiry_date <> ''
+            ORDER BY TO_DATE(ci.expiry_date, 'YYYY-MM-DD') ASC
+            LIMIT 10
+        """)
 
         if data:
             df = pd.DataFrame(data)
