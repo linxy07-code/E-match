@@ -91,13 +91,12 @@ def render_trust_safety_page(db, user_id):
         """, unsafe_allow_html=True)
 
         rules = [
-            ("Successful match completed",     "+1.0", True),
-            ("Item listed with accurate info",  "+0.5", True),
-            ("Uploaded a clear item photo",     "+0.5", True),
-            ("Fast response to requests",       "+0.5", True),
+            ("Successful match completed",      "+1.0", True),
             ("Misconduct reported & verified",  "−3.0", False),
+            ("Inaccurate item information",     "-2.0", False),
             ("Listing an expired item",         "−1.0", False),
             ("No-show for agreed pickup",       "−2.0", False),
+            ("Harassment, threats, or abusive language confirmed", "-5.0", False),
         ]
         for rule, impact, pos in rules:
             color = pos_color if pos else "#dc2626"
