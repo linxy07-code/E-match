@@ -202,7 +202,13 @@ def render_company_upload(db, user_id):
                 key="co_exchange_want"
             )
 
-            description = f"OFFER: {exchange_offer}\nWANT: {exchange_want}"
+            # clean optional safety
+            exchange_offer = exchange_offer.strip() if exchange_offer and exchange_offer.strip() else None
+            exchange_want = exchange_want.strip() if exchange_want and exchange_want.strip() else None
+
+            description = ""  # keep empty for exchange
+
+            
 
         else:
             description = st.text_area("Description", key="co_description")

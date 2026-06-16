@@ -80,8 +80,8 @@ def render_company_marketplace(db, user_id):
         flex: 1 1 auto; /* Forces structural alignment flexibility across the row */
     }
     .mp-card-title {
-        font-size: 1.3rem; font-weight: 700; color: #1e293b;
-        margin: 14px 0 12px 0; line-height: 1.3;
+        font-size: 1.4rem; font-weight: 600; color: #1e293b;
+        margin: 25px 0 12px 0; line-height: 1.3;
     }
 
     .mp-card-row { 
@@ -100,7 +100,7 @@ def render_company_marketplace(db, user_id):
         width: 100%; height: 230px; overflow: hidden; border-radius: 14px;
         display: flex; align-items: center; justify-content: center;
         background-color: #ffffff; /* 🌟 FIXED: Changed background from black to white to fix side margins */
-        border: 1px solid #e2e8f0;
+        border: 1px solid #e2e8f0; margin-bottom: 15px; 
     }
     .mp-img-frame img {
         width: 100%; height: 100%; object-fit: contain; object-position: center;
@@ -205,6 +205,7 @@ def render_company_marketplace(db, user_id):
             price = item.get("price")
             region = item.get("region") or "—"
             category = item.get("category") or "—"
+            quantity = item.get("quantity", 0)
 
             raw_desc = str(item.get('description') or "").strip()
             raw_company = str(item.get('company_name') or item.get('seller_name') or "—").strip()
@@ -241,10 +242,17 @@ def render_company_marketplace(db, user_id):
                 img_tag_html = '<div class="mp-img-frame" style="font-size:3rem;">🏭</div>'
 
             if listing_type == "exchange":
-                exchange_desc = f'🔄 <strong>Exchange Item:</strong> {description_clean}'
-            else:
-                exchange_desc = f'📝 <strong>Description:</strong> {description_clean}'
+                offer_item = item.get("exchange_offer") or "-"
+                want_item = item.get("exchange_want") or "-"
 
+                exchange_desc = (
+                    f'🔄 <strong>Exchange:</strong><br><br>'
+                    f'<strong>OFFER:</strong> {html.escape(offer_item)}<br>'
+                    f'<strong>WANT:</strong> {html.escape(want_item)}'
+                )
+
+            else:
+                exchange_desc = f'📝 <strong>Description:</strong><br><br> {description_clean}'
             # ✅ FIXED: Completely removed price_row variable injection here to keep cards even
             full_card_html = (
                 f'<div class="mp-card">'
@@ -254,6 +262,7 @@ def render_company_marketplace(db, user_id):
                 f'<div class="mp-card-row">🏢 <strong>Company:</strong> {company_name_clean}</div>'
                 f'<div class="mp-card-row">📍 <strong>Region:</strong> {region}</div>'
                 f'<div class="mp-card-row">🏷️ <strong>Category:</strong> {category}</div>'
+                f'<div class="mp-card-row">📦 <strong>Quantity:</strong> {quantity}</div>'
                 f'<div class="mp-card-desc">{exchange_desc}</div>'
                 f'</div>'
             )
