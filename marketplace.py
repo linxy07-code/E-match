@@ -299,7 +299,7 @@ def render_marketplace_page(db=None):
                 if listing_type == "exchange":
                     clean_offer = html.escape(item_offer or "—")
                     clean_want = html.escape(item_want or "—")
-                    full_html = f'📥 <strong>Item to give:</strong> {clean_offer}<br><span style="display:inline-block; margin-top:4px;">📤 <strong>Item to receive:</strong> {clean_want}</span>'
+                    full_html = f'📥 <strong>OFFER:</strong> {clean_offer}<br><span style="display:inline-block; margin-top:4px;">📤 <strong>WANT:</strong> {clean_want}</span>'
                 else:
                     full_html = f'{description_clean}'
                 

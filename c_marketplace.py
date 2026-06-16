@@ -55,7 +55,32 @@ def render_company_marketplace(db, user_id):
     [data-testid="stHorizontalBlock"] {
         align-items: flex-end !important;
     }
+                
+    /* ── READ MORE TOGGLE (COMPANY MARKETPLACE) ── */
+    /* ── PURE CSS PUSH-BUTTON TOGGLE ── */
+    .desc-toggle {
+        display: none;
+    }
+    .desc-label {
+        color: #2563eb;
+        font-size: 0.78rem;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-block;
+        margin-top: 4px;
+        text-decoration: underline;
+    }
+    .desc-label:hover {
+        color: #166534;
+    }
+    .desc-full {
+        display: none;
+    }
+    .desc-toggle:checked ~ .desc-full  { display: block; margin-bottom: 6px; }
+    .desc-toggle:checked ~ .desc-label::after { content: "Read Less"; }
+    .desc-toggle:not(:checked) ~ .desc-label::after { content: "Read More"; }
     
+                
     [data-testid="stWidgetLabel"] p {
         font-size: 0.85rem !important;
         color: #475569 !important;
@@ -208,6 +233,25 @@ def render_company_marketplace(db, user_id):
             quantity = item.get("quantity", 0)
 
             raw_desc = str(item.get('description') or "").strip()
+            base_exchange_desc = raw_desc
+
+            item_offer = ""
+            item_want = ""
+
+            if listing_type == "exchange":
+                text = base_exchange_desc
+
+                offer_split = re.split(r"OFFER\s*:", text, flags=re.IGNORECASE)
+                if len(offer_split) > 1:
+                    rest = offer_split[1]
+                    want_split = re.split(r"WANT\s*:", rest, flags=re.IGNORECASE)
+
+                    item_offer = want_split[0].strip() if len(want_split) > 0 else "Not specified"
+                    item_want = want_split[1].strip() if len(want_split) > 1 else "Not specified"
+                else:
+                    item_offer = "Not specified"
+                    item_want = "Not specified"
+
             raw_company = str(item.get('company_name') or item.get('seller_name') or "—").strip()
 
             if "(" in str(price):
@@ -241,18 +285,20 @@ def render_company_marketplace(db, user_id):
             else:
                 img_tag_html = '<div class="mp-img-frame" style="font-size:3rem;">🏭</div>'
 
-            if listing_type == "exchange":
-                offer_item = item.get("exchange_offer") or "-"
-                want_item = item.get("exchange_want") or "-"
 
-                exchange_desc = (
-                    f'🔄 <strong>Exchange:</strong><br><br>'
-                    f'<strong>OFFER:</strong> {html.escape(offer_item)}<br>'
-                    f'<strong>WANT:</strong> {html.escape(want_item)}'
-                )
-
+            # ── 6. ZERO-PREVIEW SEAMLESS EXPANDABLE TOGGLES ───────────────────
+            if description_clean == "No description provided.":
+                exchange_desc = '<span style="font-style: italic; color:#a3a3a3;">No description provided.</span>'
             else:
-                exchange_desc = f'📝 <strong>Description:</strong><br><br> {description_clean}'
+                if listing_type == "exchange":
+                    clean_offer = html.escape(item_offer or "—")
+                    clean_want = html.escape(item_want or "—")
+                    full_html = f'📥 <strong>OFFER:</strong> {clean_offer}<br><span style="display:inline-block; margin-top:4px;">📤 <strong>WANT:</strong> {clean_want}</span>'
+                else:
+                    full_html = f'📥 {description_clean}'
+                
+                exchange_desc = f'<input type="checkbox" id="toggle_{item_id}" class="desc-toggle"><span class="desc-full">{full_html}</span><label for="toggle_{item_id}" class="desc-label"></label>'
+            
             # ✅ FIXED: Completely removed price_row variable injection here to keep cards even
             full_card_html = (
                 f'<div class="mp-card">'
