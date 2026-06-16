@@ -105,6 +105,8 @@ def render_company_items(db, user_id):
 
             item_id = item["item_id"]
 
+            reserved = db.is_company_item_reserved(item_id)
+
             # ─────────────────────────────────────────────
             # SAME SESSION STATE LOGIC AS PERSONAL
             # ─────────────────────────────────────────────
@@ -146,6 +148,9 @@ def render_company_items(db, user_id):
                     st.balloons()
                     st.toast(f"🎉 Buyer confirmed {item['item_name']}!", icon="📦")
 
+            elif reserved:
+                st.info("📦 Item reserved by buyer")
+
             # DEFAULT
             else:
                 st.info("⏳ Waiting for buyers")
@@ -153,8 +158,6 @@ def render_company_items(db, user_id):
             # ─────────────────────────────────────────────
             # ACTION BUTTONS (SAME AS PERSONAL STYLE)
             # ─────────────────────────────────────────────
-
-            reserved = item.get("seller_shipped") or item.get("buyer_received")
 
             col1, col2 = st.columns(2)
 

@@ -1232,12 +1232,17 @@ class EcoMatchDB:
                         FROM company_items
                         WHERE id = %s
                     """, (item_id,))
+
                     row = cursor.fetchone()
 
                     if not row:
                         return False
 
-                    return row["reserved_by"] is not None
+                    return row.get("reserved_by") is not None
+
+        except Exception as e:
+            print(f"[DB ERROR] is_company_item_reserved: {e}")
+            return False
 
         except Exception:
             return False
