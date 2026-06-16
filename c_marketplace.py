@@ -277,10 +277,19 @@ def render_company_marketplace(db, user_id):
                     )
 
                     if st.button(f"✅ Confirm", key=f"co_confirm_{item_id}"):
+
                         res = db.reserve_company_item(item_id, user_id)
 
                         if res.get("success"):
-                            st.success("Reserved successfully")
+
+                            st.session_state["show_cart_popup"] = True
+                            st.session_state["cart_popup_item"] = item.get("item_name", "Item")
+
+                            st.rerun()
+
+                        elif res.get("error") == "duplicate":
+                            st.warning("⚠️ You already requested this item.")
+
                         else:
                             st.error(res.get("error"))
 

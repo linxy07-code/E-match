@@ -78,6 +78,8 @@ def render_company_items(db, user_id):
         seller_shipped = item.get("seller_shipped", False)
         buyer_received = item.get("buyer_received", False)
 
+        reserved = db.is_company_item_reserved(item_id)
+
         img_col, info_col = st.columns([1, 2])
 
         with img_col:
@@ -148,7 +150,10 @@ def render_company_items(db, user_id):
 
             # DEFAULT
             else:
-                st.info("⏳ Waiting for buyers")
+                if reserved:
+                    st.info("🛒 Item is reserved by a buyer")
+                else:
+                    st.info("⏳ Waiting for buyers")
 
             # ─────────────────────────────────────────────
             # ACTION BUTTONS (SAME AS PERSONAL STYLE)
