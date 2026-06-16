@@ -75,6 +75,8 @@ def render_my_items_page(db, user_id, get_transaction_status, _lt_badge):
             seller_shipped = item.get("seller_shipped", False)
             buyer_received = item.get("buyer_received", False)
 
+            reserved = db.is_item_reserved(item_id)
+
             # ─────────────────────────────────────────────
             # SESSION FLAGS
             # ─────────────────────────────────────────────
@@ -122,13 +124,15 @@ def render_my_items_page(db, user_id, get_transaction_status, _lt_badge):
 
             # DEFAULT
             else:
-                st.info("⏳ Waiting for buyers")
+                if reserved:
+                    st.info("🛒 Item is reserved by a buyer")
+                else:
+                    st.info("⏳ Waiting for buyers")
 
             # ─────────────────────────────────────────────
             # ACTION BUTTONS
             # ─────────────────────────────────────────────
 
-            reserved = db.is_item_reserved(item_id)
 
             col1, col2 = st.columns(2)
 
