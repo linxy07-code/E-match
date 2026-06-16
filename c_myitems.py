@@ -33,9 +33,14 @@ def _lt_badge(listing_type, price=None):
 
 
 def render_company_items(db, user_id):
+    # Blue Header Section
     st.markdown(
-        '<div class="page-header"><h1>🧾 My Uploads / Items</h1>'
-        "<p>All items your company has posted to the marketplace</p></div>",
+        """
+        <div class="page-header" style="background: linear-gradient(135deg, #1e40af, #3b82f6); color: white; padding: 2rem; border-radius: 20px; margin-bottom: 1.5rem;">
+            <h1 style="color: white; margin: 0; font-size: 2.2rem;">🧾 My Uploads / Items</h1>
+            <p style="color: #e0f2fe; margin: 0.5rem 0 0 0; opacity: 0.9;">All items your company has posted to the marketplace</p>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
@@ -66,12 +71,6 @@ def render_company_items(db, user_id):
         )
 
         exp = item.get("expiry_date")
-        expiry_row = (
-            f"<div class='my-item-row'>📅 <strong>Expires:</strong> {exp}</div>"
-            if exp
-            else ""
-        )
-
         desc = item.get("description") or ""
         desc_block = f"<p class='my-item-desc'>{desc}</p>" if desc else ""
 
@@ -104,92 +103,58 @@ def render_company_items(db, user_id):
             """, unsafe_allow_html=True)
 
             item_id = item["item_id"]
-
             reserved = db.is_company_item_reserved(item_id)
 
-            # ─────────────────────────────────────────────
-            # SAME SESSION STATE LOGIC AS PERSONAL
-            # ─────────────────────────────────────────────
-
             completed_key = f"co_completed_{item_id}"
-            buyer_first_key = f"co_buyer_first_{item_id}"
-
             if completed_key not in st.session_state:
                 st.session_state[completed_key] = False
 
-            if buyer_first_key not in st.session_state:
-                st.session_state[buyer_first_key] = False
-
-            # ─────────────────────────────────────────────
-            # SAME TRANSACTION FLOW AS MY ITEMS
-            # ─────────────────────────────────────────────
-
-            # CASE 3: COMPLETE
+            # TRANSACTION STATUS LOGIC
             if seller_shipped and buyer_received:
                 st.success("🎉 Transaction completed!")
-
                 if not st.session_state.get(completed_key):
                     st.session_state[completed_key] = True
                     st.balloons()
                     st.toast(f"🎉 {item['item_name']} completed!", icon="✅")
 
-            # CASE 1: shipped but not received
             elif seller_shipped:
                 st.success("📦 Shipped")
                 st.info("⏳ Waiting for buyer to confirm receipt")
 
-            # CASE 2: reserved but not shipped
             elif reserved:
                 st.info("📦 Item reserved by buyer")
                 st.info("⏳ Waiting for seller to ship")
 
-            # CASE 3 (SAFE FALLBACK ONLY)
             else:
-                st.warning("📦 Pending action")
+                # UPDATED: This now matches the blue "Waiting for buyers" style
+                st.info("⏳ Waiting for buyers")
 
-            # ─────────────────────────────────────────────
-            # ACTION BUTTONS (SAME AS PERSONAL STYLE)
-            # ─────────────────────────────────────────────
-
+            # ACTION BUTTONS
             col1, col2 = st.columns(2)
 
             with col1:
                 if st.button("📦 Shipped / Sent Out", key=f"co_ship_{item_id}"):
-
                     if not reserved:
                         st.error("❌ Cannot ship: Item is not reserved.")
                         time.sleep(2)
                         st.rerun()
-
                     else:
                         result = db.mark_company_item_shipped(item_id)
-
                         if result.get("success"):
-
-                            # 🔥 IMPORTANT FIX: check reverse-order completion
                             updated = db.get_company_items(user_id)
-                            item_live = next(
-                                (i for i in updated.get("items", [])
-                                 if i["item_id"] == item_id),
-                                {}
-                            )
-
+                            item_live = next((i for i in updated.get("items", []) if i["item_id"] == item_id), {})
                             if item_live.get("buyer_received"):
                                 st.balloons()
                                 st.session_state["show_txn_complete_dialog"] = True
                                 st.session_state["txn_complete_item"] = item["item_name"]
-
                             st.success("Item marked as shipped.")
                             st.rerun()
-
                         else:
                             st.error(result.get("error"))
 
             with col2:
                 if st.button("🗑️ Delete Listing", key=f"co_del_{item_id}"):
-
                     result = db.delete_company_item(item_id, user_id)
-
                     if result.get("success"):
                         st.success("Listing deleted.")
                         st.rerun()
