@@ -78,7 +78,6 @@ def render_company_items(db, user_id):
         seller_shipped = item.get("seller_shipped", False)
         buyer_received = item.get("buyer_received", False)
 
-        reserved = db.is_company_item_reserved(item_id)
 
         img_col, info_col = st.columns([1, 2])
 
@@ -106,6 +105,8 @@ def render_company_items(db, user_id):
             """, unsafe_allow_html=True)
 
             item_id = item["item_id"]
+
+            reserved = item.get("reserved_by") is not None
 
             # ─────────────────────────────────────────────
             # SAME SESSION STATE LOGIC AS PERSONAL

@@ -1222,6 +1222,25 @@ class EcoMatchDB:
                     return {"success": True, "items": [dict(row) for row in cursor.fetchall()]}
         except Exception as e:
             return {"success": False, "error": str(e)}
+        
+    def is_company_item_reserved(self, item_id):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT reserved_by
+                        FROM company_items
+                        WHERE id = %s
+                    """, (item_id,))
+                    row = cursor.fetchone()
+
+                    if not row:
+                        return False
+
+                    return row["reserved_by"] is not None
+
+        except Exception:
+            return False
 
     def get_all_company_items(
         self,
