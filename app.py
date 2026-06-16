@@ -510,12 +510,22 @@ if not st.session_state.logged_in:
 
             if st.button("Create My Account →", width="stretch"):
                 errors = []
+
                 if not r_user or not r_email or not r_pass:
                     errors.append("Please fill in all required fields (username, email, password).")
+
                 elif "@" not in r_email or "." not in r_email:
                     errors.append("Please enter a valid email address.")
+
                 if not r_phone or not r_phone.strip():
                     errors.append("Phone number is required.")
+
+                # NEW: Company name validation
+                if (
+                    st.session_state.reg_type == "Company"
+                    and (not r_company_name or not r_company_name.strip())
+                ):
+                    errors.append("Company name is required.")
                 if errors:
                     for e in errors:
                         st.error(f"❌ {e}")
