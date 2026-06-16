@@ -128,32 +128,24 @@ def render_company_items(db, user_id):
             if seller_shipped and buyer_received:
                 st.success("🎉 Transaction completed!")
 
-                if not st.session_state[completed_key]:
+                if not st.session_state.get(completed_key):
+                    st.session_state[completed_key] = True
                     st.balloons()
                     st.toast(f"🎉 {item['item_name']} completed!", icon="✅")
-                    st.session_state[completed_key] = True
 
-            # CASE 1: seller shipped first
-            elif seller_shipped and not buyer_received:
+            # CASE 1: shipped but not received
+            elif seller_shipped:
                 st.success("📦 Shipped")
                 st.info("⏳ Waiting for buyer to confirm receipt")
 
-            # CASE 2: buyer received first (SELLER POPUP TRIGGER)
-            elif buyer_received and not seller_shipped:
-                st.info("📦 Buyer confirmed receipt")
-                st.info("⏳ Waiting for your shipment confirmation")
-
-                if not st.session_state[buyer_first_key]:
-                    st.session_state[buyer_first_key] = True
-                    st.balloons()
-                    st.toast(f"🎉 Buyer confirmed {item['item_name']}!", icon="📦")
-
+            # CASE 2: reserved but not shipped
             elif reserved:
                 st.info("📦 Item reserved by buyer")
+                st.info("⏳ Waiting for seller to ship")
 
-            # DEFAULT
+            # CASE 3 (SAFE FALLBACK ONLY)
             else:
-                st.info("⏳ Waiting for buyers")
+                st.warning("📦 Pending action")
 
             # ─────────────────────────────────────────────
             # ACTION BUTTONS (SAME AS PERSONAL STYLE)

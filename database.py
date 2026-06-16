@@ -1334,41 +1334,102 @@ class EcoMatchDB:
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-                    cursor.execute(
-                        "UPDATE company_items SET seller_shipped = TRUE WHERE id = %s", (item_id,)
-                    )
-                    conn.commit()
-            self._check_transaction_complete(item_id, source_table="company_items")
-            return {"success": True}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
 
-    def mark_company_item_received(self, item_id):
-        try:
-            with self._get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute(
-                        "UPDATE company_items SET buyer_received = TRUE WHERE id = %s", (item_id,)
-                    )
+                    # 1. Get item info INCLUDING shipped status
                     cursor.execute("""
-                        SELECT user_id, item_name
+                        SELECT user_id, item_name, seller_shipped
                         FROM company_items
                         WHERE id = %s
                     """, (item_id,))
                     item = cursor.fetchone()
-                    if item:
-                        cursor.execute("""
-                            INSERT INTO notifications (user_id, title, body)
-                            VALUES (%s, %s, %s)
-                        """, (
-                            item["user_id"],
-                            "📦 Buyer Confirmed Receipt",
-                            f"Buyer has received '{item['item_name']}'. "
-                            f"Please confirm shipment to complete the transaction."
-                        ))
+    
+                    if not item:
+                        return {"success": False, "error": "Item not found"}
+    
+                    # 2. BLOCK if already shipped
+                    if item["seller_shipped"]:
+                        return {"success": False, "error": "Item already shipped"}
+    
+                    seller_id = item["user_id"]
+                    item_name = item["item_name"]
+    
+                    print("🚚 Shipping item:", item_id, item_name, "to user:", seller_id)
+    
+                    # 3. Update shipped status
+                    cursor.execute("""
+                        UPDATE company_items
+                        SET seller_shipped = TRUE
+                        WHERE id = %s
+                    """, (item_id,))
+    
+                    # 4. Send notification ONLY once
+                    cursor.execute("""
+                        INSERT INTO notifications (user_id, title, body)
+                        VALUES (%s, %s, %s)
+                    """, (
+                        seller_id,
+                        "🚚 Item Shipped",
+                        f"Your item '{item_name}' has been shipped."
+                    ))
+
                     conn.commit()
+
+                # 5. Transaction check
+                self._check_transaction_complete(item_id, source_table="company_items")
+
+                return {"success": True}
+
+        except Exception as e:
+            print("❌ ERROR in mark_company_item_shipped:", str(e))
+            return {"success": False, "error": str(e)}
+    
+    def mark_company_item_received(self, item_id):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+
+                    # 1. Get item info + current state
+                    cursor.execute("""
+                        SELECT user_id, item_name, buyer_received
+                        FROM company_items
+                        WHERE id = %s
+                    """, (item_id,))
+                    item = cursor.fetchone()
+    
+                    if not item:
+                        return {"success": False, "error": "Item not found"}
+
+                    # 2. BLOCK duplicate receive
+                    if item["buyer_received"]:
+                        return {"success": False, "error": "Already marked as received"}
+
+                    seller_id = item["user_id"]
+                    item_name = item["item_name"]
+
+                    # 3. Update receive status
+                    cursor.execute("""
+                        UPDATE company_items
+                        SET buyer_received = TRUE
+                        WHERE id = %s
+                    """, (item_id,))
+
+                    # 4. Notification (ONLY ONCE)
+                    cursor.execute("""
+                        INSERT INTO notifications (user_id, title, body)
+                        VALUES (%s, %s, %s)
+                    """, (
+                        seller_id,
+                        "📦 Buyer Confirmed Receipt",
+                        f"Buyer has received '{item_name}'. Please confirm completion."
+                    ))
+
+                    conn.commit()
+
+            # 5. Transaction check
             self._check_transaction_complete(item_id, source_table="company_items")
+
             return {"success": True}
+
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -1376,17 +1437,53 @@ class EcoMatchDB:
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
-                    cursor.execute("SELECT reserved_by FROM company_items WHERE id = %s", (item_id,))
+
+                    # 1. Get item info + seller info
+                    cursor.execute("""
+                        SELECT reserved_by, user_id, item_name
+                        FROM company_items
+                        WHERE id = %s
+                    """, (item_id,))
                     row = cursor.fetchone()
+
                     if not row:
                         return {"success": False, "error": "Item not found"}
+
                     if row["reserved_by"] is not None:
                         return {"success": False, "error": "Already reserved"}
+
+                    # 2. Get buyer username (for nicer notification)
                     cursor.execute("""
-                        UPDATE company_items SET reserved_by = %s, buyer_id = %s WHERE id = %s
+                        SELECT username
+                        FROM users
+                        WHERE id = %s
+                    """, (user_id,))
+                    buyer = cursor.fetchone()
+
+                    buyer_name = buyer["username"] if buyer else f"User {user_id}"
+
+                    # 3. Reserve item
+                    cursor.execute("""
+                        UPDATE company_items
+                        SET reserved_by = %s,
+                            buyer_id = %s
+                        WHERE id = %s
                     """, (user_id, user_id, item_id))
+    
+                    # 4. Notify seller WITH buyer name
+                    cursor.execute("""
+                        INSERT INTO notifications (user_id, title, body)
+                        VALUES (%s, %s, %s)
+                    """, (
+                        row["user_id"],
+                        "🛒 Added to Cart",
+                        f"{buyer_name} reserved your item '{row['item_name']}'"
+                    ))
+    
                     conn.commit()
+    
                     return {"success": True}
+
         except Exception as e:
             return {"success": False, "error": str(e)}
 
