@@ -643,7 +643,7 @@ class EcoMatchDB:
                     """, (
                         item["user_id"],
                         "📦 Buyer Confirmed Receipt",
-                        f"Buyer has received '{item['item_name']}'. Please ship to complete transaction."
+                        f"Buyer has received '{item['item_name']}'."
                     ))
                     conn.commit()
                 self._check_transaction_complete(item_id)
@@ -986,12 +986,15 @@ class EcoMatchDB:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
-                        SELECT TO_CHAR(created_at,'YYYY-MM') AS month, COUNT(*) AS matches
-                        FROM claims GROUP BY month ORDER BY month
+                        SELECT TO_CHAR(created_at,'Mon') AS month, COUNT(*) AS matches
+                        FROM claims
+                        GROUP BY month
+                        ORDER BY MIN(created_at)
                     """)
                     return [dict(row) for row in cursor.fetchall()]
         except Exception:
             return []
+
 
     def get_monthly_items(self):
         try:

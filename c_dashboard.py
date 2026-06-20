@@ -109,7 +109,7 @@ def render_company_dashboard(db, user_id):
         <div class="metric-card"><div class="metric-value">{total_listings}</div><div class="metric-label">Active Listings</div><div class="metric-delta">↑ {fmt(listing_delta)} change</div></div>
         <div class="metric-card"><div class="metric-value">{near_expiry}</div><div class="metric-label">Near Expiry</div><div class="metric-delta">{"✓ All clear" if near_expiry == 0 else "⚠ Needs attention"}</div></div>
         <div class="metric-card"><div class="metric-value">{completed_sales}</div><div class="metric-label">Completed Sales</div><div class="metric-delta">↑ {fmt(sales_delta)} this period</div></div>
-        <div class="metric-card"><div class="metric-value">RM {float(total_revenue):,.2f}</div><div class="metric-label">Total Revenue</div><div class="metric-delta">Revenue tracked</div></div>
+        <div class="metric-card"><div class="metric-value">RM {float(total_revenue):,.2f}</div><div class="metric-label">Total Trading Revenue</div><div class="metric-delta">Revenue tracked</div></div>
     </div>
     """, unsafe_allow_html=True)
 
