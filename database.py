@@ -643,7 +643,7 @@ class EcoMatchDB:
                     """, (
                         item["user_id"],
                         "📦 Buyer Confirmed Receipt",
-                        f"Buyer has received '{item['item_name']}'."
+                        f"Buyer has received '{item['item_name']}'. Please ship to complete transaction."
                     ))
                     conn.commit()
                 self._check_transaction_complete(item_id)
@@ -957,15 +957,23 @@ class EcoMatchDB:
                     cursor.execute("SELECT AVG(trust_score) FROM users")
                     res = cursor.fetchone()
                     stats["avg_trust_score"] = round(float(res["avg"]), 1) if res and res["avg"] else 10.0
-                    cursor.execute("SELECT COUNT(*) FROM claims")
+                    cursor.execute("""
+                        SELECT COUNT(*) AS count
+                        FROM past_transactions
+                        WHERE source_table = 'items'
+                    """)
                     stats["total_matches"] = cursor.fetchone()["count"] or 0
+
                     cursor.execute("""
                         SELECT COUNT(*) FROM items
-                        WHERE is_active = 1 AND expiry_date IS NOT NULL AND expiry_date <> ''
-                          AND TO_DATE(expiry_date,'YYYY-MM-DD') <= CURRENT_DATE + INTERVAL '7 days'
-                          AND TO_DATE(expiry_date,'YYYY-MM-DD') >= CURRENT_DATE
+                        WHERE is_active = 1
+                          AND expiry_date IS NOT NULL
+                          AND expiry_date <> ''
+                          AND expiry_date >= TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD')
+                          AND expiry_date <= TO_CHAR(CURRENT_DATE + INTERVAL '14 days', 'YYYY-MM-DD')
                     """)
                     stats["near_expiry_count"] = cursor.fetchone()["count"] or 0
+
                     cursor.execute("SELECT COUNT(*) FROM items WHERE created_at >= CURRENT_DATE")
                     stats["listings_today_delta"] = cursor.fetchone()["count"] or 0
                     cursor.execute("SELECT COUNT(*) FROM claims WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'")
@@ -986,15 +994,15 @@ class EcoMatchDB:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
-                        SELECT TO_CHAR(created_at,'Mon') AS month, COUNT(*) AS matches
-                        FROM claims
+                        SELECT TO_CHAR(completed_at, 'Mon') AS month, COUNT(*) AS matches
+                        FROM past_transactions
+                        WHERE source_table = 'items'
                         GROUP BY month
-                        ORDER BY MIN(created_at)
+                        ORDER BY MIN(completed_at)
                     """)
                     return [dict(row) for row in cursor.fetchall()]
         except Exception:
             return []
-
 
     def get_monthly_items(self):
         try:
