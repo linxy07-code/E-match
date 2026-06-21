@@ -300,7 +300,7 @@ with st.sidebar:
                 ("🛒  My Order Cart",         "Company Cart"),
                 ("📜  Transaction History",   "Company Transactions"),
                 ("🗂️  My Inventory",          "Company Inventory"),
-                ("📦  Upload Inventory",      "Upload Inventory"),
+                ("📦  Upload Items",      "Upload Inventory"),
                 ("🗂️  My Uploads / Items",    "My Items"),
                 ("🛡️  Trust & Safety",        "Company Trust & Safety"),
                 ("📊  Company Dashboard",     "Company Dashboard"),

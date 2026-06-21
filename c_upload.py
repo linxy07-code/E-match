@@ -114,13 +114,12 @@ def render_company_upload(db, user_id):
             key="co_category"
         )
 
-        region = st.selectbox(
-            "Region *",
-            ["Johor","Kedah","Kelantan","Melaka","Negeri Sembilan",
-             "Pahang","Perak","Perlis","Pulau Pinang",
-             "Selangor","Terengganu","Sabah","Sarawak"],
-            key="co_region"
-        )
+        region = st.selectbox("Pickup Region *", [
+            "Johor","Kedah","Kelantan","Melaka","Negeri Sembilan",
+            "Pahang","Perak","Perlis","Pulau Pinang",
+            "Selangor","Terengganu","Sabah","Sarawak",
+            "Kuala Lumpur"
+        ], key="upload_region")
 
         quantity = st.number_input(
             "Quantity *",

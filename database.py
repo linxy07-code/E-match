@@ -90,7 +90,7 @@ class EcoMatchDB:
                     if not cursor.fetchone():
                         cursor.execute(f"ALTER TABLE items ADD COLUMN {col} {definition}")
 
-                # ── 3. COMPANY INVENTORY TABLE (separate, never mixed with personal items) ──
+                # ── 3. COMPANY ITEMS TABLE (separate, never mixed with personal items) ──
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS company_items (
                         id             SERIAL PRIMARY KEY,
@@ -222,7 +222,7 @@ class EcoMatchDB:
                     if not cursor.fetchone():
                         cursor.execute(f"ALTER TABLE past_transactions ADD COLUMN {col} {definition}")
 
-                # Index common read paths so page loads and filters avoid table scans.
+                # Indexs
                 for index_sql in [
                     "CREATE INDEX IF NOT EXISTS idx_items_marketplace ON items (is_active, reserved_by, user_id, id DESC)",
                     "CREATE INDEX IF NOT EXISTS idx_items_filters ON items (region, listing_type, condition)",
