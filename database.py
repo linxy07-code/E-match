@@ -564,6 +564,10 @@ class EcoMatchDB:
                     row = cursor.fetchone()
                     if not row or row["user_id"] != user_id:
                         return {"success": False, "error": "Unauthorized"}
+
+                    # NEW: clear dependent claims before removing the item
+                    cursor.execute("DELETE FROM claims WHERE item_id = %s", (item_id,))
+
                     cursor.execute("DELETE FROM items WHERE id = %s", (item_id,))
                     conn.commit()
                     return {"success": True}
@@ -731,6 +735,14 @@ class EcoMatchDB:
                             reserved_by = NULL
                         WHERE id = %s
                     """, (item_id,))
+
+                    if source_table == "items":
+                        cursor.execute("""
+                            UPDATE claims
+                            SET status = 'completed'
+                            WHERE item_id = %s
+                        """, (item_id,))
+
 
                     if effective_buyer_id:
                         cursor.execute("""
@@ -1009,10 +1021,11 @@ class EcoMatchDB:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
-                        SELECT TO_CHAR(created_at,'Mon') AS month,
-                               COUNT(*) AS matches
-                        FROM claims
-                        GROUP BY month
+                        SELECT
+                            TO_CHAR(created_at, 'Mon') AS month,
+                            COUNT(*) AS items
+                        FROM items
+                        GROUP BY TO_CHAR(created_at, 'Mon')
                         ORDER BY MIN(created_at)
                     """)
                     return [dict(row) for row in cursor.fetchall()]
@@ -1024,8 +1037,14 @@ class EcoMatchDB:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
-                        SELECT region, COUNT(*) AS matches
-                        FROM items GROUP BY region ORDER BY matches DESC
+                        SELECT i.region,
+                                COUNT(*) AS matches
+                        FROM past_transactions pt
+                        JOIN items i
+                            ON pt.item_id = i.id
+                        WHERE pt.source_table = 'items'
+                        GROUP BY i.region
+                        ORDER BY matches DESC
                     """)
                     return [dict(row) for row in cursor.fetchall()]
         except Exception:
@@ -1092,11 +1111,14 @@ class EcoMatchDB:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
-                        SELECT COALESCE(ci.region, u.region, 'Unknown') AS region,
-                               COUNT(*) AS sales
+                        SELECT 
+                            COALESCE(ci.region, u.region, 'Unknown') AS region,
+                            COUNT(*) AS sales
                         FROM past_transactions pt
-                        LEFT JOIN company_items ci ON ci.id = pt.item_id
-                        LEFT JOIN users u ON u.id::text = pt.seller_id::text
+                        LEFT JOIN company_items ci 
+                            ON ci.id = pt.item_id
+                        LEFT JOIN users u 
+                            ON u.id = pt.seller_id
                         WHERE pt.source_table = 'company_items'
                         GROUP BY COALESCE(ci.region, u.region, 'Unknown')
                         ORDER BY sales DESC
@@ -1104,7 +1126,7 @@ class EcoMatchDB:
                     return [dict(row) for row in cursor.fetchall()]
         except Exception:
             return []
-
+        
     def get_company_users_by_region(self):
         try:
             with self._get_connection() as conn:

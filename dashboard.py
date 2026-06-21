@@ -48,7 +48,12 @@ def render_dashboard_page(db):
     """, unsafe_allow_html=True)
 
     months_labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-    region_labels = ["Selangor", "Kuala Lumpur", "Penang", "Johor", "Melaka", "Sabah", "Sarawak"]
+    region_labels = [
+        "Johor", "Kelantan", "Terengganu", "Negeri Sembilan",
+        "Sabah", "Selangor", "Perlis", "Perak",
+        "Pahang", "Kedah", "Sarawak", "Melaka",
+        "Pulau Pinang", "Kuala Lumpur"
+    ]
 
     # ── 2. DATA VISUALIZATION ENGINE ─────────────────────────────────────────
     tab_a, tab_b = st.tabs(["📈  Monthly Trends", "🗺️  Regional Breakdown"])

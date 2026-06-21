@@ -149,7 +149,7 @@ def render_upload_page(db=None):
         region = st.selectbox("Pickup Region *", [
             "Johor","Kedah","Kelantan","Melaka","Negeri Sembilan",
             "Pahang","Perak","Perlis","Pulau Pinang",
-            "Selangor","Terengganu","Sabah","Sarawak"
+            "Selangor","Terengganu","Sabah","Sarawak","Kuala Lumpur"
         ], key="upload_region")
 
         condition = st.selectbox("Item Condition *", [
