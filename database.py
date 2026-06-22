@@ -988,7 +988,7 @@ class EcoMatchDB:
 
                     cursor.execute("SELECT COUNT(*) FROM items WHERE created_at >= CURRENT_DATE")
                     stats["listings_today_delta"] = cursor.fetchone()["count"] or 0
-                    cursor.execute("SELECT COUNT(*) FROM claims WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'")
+                    cursor.execute("SELECT COUNT(*) FROM past_transactions WHERE source_table = 'items' AND completed_at >= CURRENT_DATE - INTERVAL '7 days'")
                     stats["matches_this_week_delta"] = cursor.fetchone()["count"] or 0
                     cursor.execute("SELECT COUNT(*) FROM users WHERE created_at >= DATE_TRUNC('month', CURRENT_DATE)")
                     stats["users_this_month_delta"] = cursor.fetchone()["count"] or 0
@@ -1563,38 +1563,51 @@ class EcoMatchDB:
                     cursor.execute("""
                         SELECT COUNT(*) AS count
                         FROM company_items
-                        WHERE user_id = %s AND is_active = 1
-                    """, (user_id,))
+                        WHERE is_active = 1
+                    """)
                     stats["total_listings"] = cursor.fetchone()["count"] or 0
 
                     cursor.execute("""
                         SELECT COUNT(*) AS count
                         FROM company_items
-                        WHERE user_id = %s
-                          AND is_active = 1
+                          WHERE is_active = 1
                           AND expiry_date IS NOT NULL
                           AND expiry_date <> ''
                           AND TO_DATE(expiry_date, 'YYYY-MM-DD')
                               BETWEEN CURRENT_DATE
                               AND CURRENT_DATE + INTERVAL '14 days'
-                    """, (user_id,))
+                    """)
                     stats["near_expiry"] = cursor.fetchone()["count"] or 0
 
                     cursor.execute("""
                         SELECT COUNT(*) AS count
                         FROM past_transactions
-                        WHERE seller_id::text = %s
-                          AND source_table = 'company_items'
-                    """, (str(user_id),))
+                        WHERE source_table = 'company_items'
+                    """)
                     stats["completed_sales"] = cursor.fetchone()["count"] or 0
 
                     cursor.execute("""
                         SELECT COALESCE(SUM(price), 0) AS total
                         FROM past_transactions
-                        WHERE seller_id::text = %s
-                          AND source_table = 'company_items'
-                    """, (str(user_id),))
+                            WHERE source_table = 'company_items'
+                    """)
                     stats["total_revenue"] = float(cursor.fetchone()["total"] or 0)
+
+                    cursor.execute("""
+                        SELECT COUNT(*) AS count
+                        FROM company_items
+                        WHERE is_active = 1
+                          AND created_at >= CURRENT_DATE
+                    """)
+                    stats["listings_delta"] = cursor.fetchone()["count"] or 0
+
+                    cursor.execute("""
+                        SELECT COUNT(*) AS count
+                        FROM past_transactions
+                        WHERE source_table = 'company_items'
+                          AND created_at >= CURRENT_DATE - INTERVAL '7 days'
+                    """)
+                    stats["sales_delta"] = cursor.fetchone()["count"] or 0
 
                     return stats
 

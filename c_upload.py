@@ -3,6 +3,7 @@ from c_styles import COMPANY_CSS
 from c_helpers import save_company_image
 
 
+
 def render_company_upload(db, user_id):
     st.markdown(COMPANY_CSS, unsafe_allow_html=True)
 
