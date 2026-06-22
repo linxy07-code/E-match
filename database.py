@@ -1067,12 +1067,26 @@ class EcoMatchDB:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
-                        SELECT item_name, category, region, expiry_date
-                        FROM items WHERE expiry_date IS NOT NULL
-                        ORDER BY expiry_date ASC LIMIT 10
+                        SELECT 
+                            item_name, 
+                            category, 
+                            region, 
+                            expiry_date
+                        FROM items
+                        WHERE is_active = 1
+                          AND expiry_date IS NOT NULL
+                          AND expiry_date <> ''
+                          AND TO_DATE(expiry_date, 'YYYY-MM-DD') 
+                              BETWEEN CURRENT_DATE 
+                              AND CURRENT_DATE + INTERVAL '14 days'
+                        ORDER BY TO_DATE(expiry_date, 'YYYY-MM-DD') ASC
+                        LIMIT 10
                     """)
-                    return [dict(row) for row in cursor.fetchall()]
-        except Exception:
+                    rows = cursor.fetchall()
+                    return [dict(row) for row in rows]
+
+        except Exception as e:
+            print("Error:", e)
             return []
 
     def get_company_monthly_listings(self):
@@ -1112,15 +1126,13 @@ class EcoMatchDB:
                 with conn.cursor() as cursor:
                     cursor.execute("""
                         SELECT 
-                            COALESCE(ci.region, u.region, 'Unknown') AS region,
+                            COALESCE(NULLIF(TRIM(ci.region), ''), 'Unknown') AS region,
                             COUNT(*) AS sales
                         FROM past_transactions pt
-                        LEFT JOIN company_items ci 
+                        JOIN company_items ci 
                             ON ci.id = pt.item_id
-                        LEFT JOIN users u 
-                            ON u.id = pt.seller_id
                         WHERE pt.source_table = 'company_items'
-                        GROUP BY COALESCE(ci.region, u.region, 'Unknown')
+                        GROUP BY ci.region
                         ORDER BY sales DESC
                     """)
                     return [dict(row) for row in cursor.fetchall()]
@@ -1154,6 +1166,8 @@ class EcoMatchDB:
                         WHERE ci.is_active = 1
                           AND ci.expiry_date IS NOT NULL
                           AND ci.expiry_date <> ''
+                          AND TO_DATE(ci.expiry_date, 'YYYY-MM-DD') >= CURRENT_DATE
+                          AND TO_DATE(ci.expiry_date, 'YYYY-MM-DD') <= CURRENT_DATE + INTERVAL '14 days'
                         ORDER BY TO_DATE(ci.expiry_date, 'YYYY-MM-DD') ASC
                         LIMIT 10
                     """)
@@ -1587,10 +1601,12 @@ class EcoMatchDB:
                     stats["completed_sales"] = cursor.fetchone()["count"] or 0
 
                     cursor.execute("""
-                        SELECT COALESCE(SUM(price), 0) AS total
-                        FROM past_transactions
-                            WHERE source_table = 'company_items'
-                    """)
+                        SELECT COALESCE(SUM(pt.price), 0) AS total
+                        FROM past_transactions pt
+                        JOIN company_items ci ON ci.id = pt.item_id
+                        WHERE pt.source_table = 'company_items'
+                        AND ci.user_id = %s
+                    """, (user_id,))
                     stats["total_revenue"] = float(cursor.fetchone()["total"] or 0)
 
                     cursor.execute("""
@@ -1605,7 +1621,7 @@ class EcoMatchDB:
                         SELECT COUNT(*) AS count
                         FROM past_transactions
                         WHERE source_table = 'company_items'
-                          AND created_at >= CURRENT_DATE - INTERVAL '7 days'
+                          AND completed_at >= CURRENT_DATE - INTERVAL '7 days'
                     """)
                     stats["sales_delta"] = cursor.fetchone()["count"] or 0
 
