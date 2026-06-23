@@ -1,9 +1,39 @@
 import streamlit as st
 import pandas as pd
+import altair as alt
+
+MONTH_ORDER = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+
+def _bar(df, x_col, y_col, order=None):
+    """Render an Altair bar chart that respects explicit category order."""
+    x_enc = (
+        alt.X(f"{x_col}:N", sort=order, axis=alt.Axis(labelAngle=-90))
+        if order
+        else alt.X(f"{x_col}:N", axis=alt.Axis(labelAngle=-90))
+    )
+    return (
+        alt.Chart(df)
+        .mark_bar(color="#1d4ed8")
+        .encode(x=x_enc, y=alt.Y(f"{y_col}:Q"))
+        .properties(height=260)
+        .configure_axis(grid=False)
+    )
+
+def _make_month_df(raw_rows, value_col):
+    df = pd.DataFrame({"month": MONTH_ORDER, value_col: [0] * 12})
+    if raw_rows:
+        db_df = pd.DataFrame(raw_rows)
+        src_cols = [c for c in db_df.columns if c != "month"]
+        if src_cols:
+            src_col = src_cols[0]
+            for _, row in db_df.iterrows():
+                m = str(row["month"]).strip()
+                if m in MONTH_ORDER:
+                    df.loc[df["month"] == m, value_col] = row[src_col]
+    return df
 
 
 def render_company_dashboard(db, user_id):
-
     st.markdown("""
     <div style="background:#1d4ed8; padding:16px; border-radius:12px; color:white;">
         <h1>📊 Analytics Dashboard</h1>
@@ -13,24 +43,20 @@ def render_company_dashboard(db, user_id):
 
     st.markdown("<div style='height:25px'></div>", unsafe_allow_html=True)
 
-    # ─────────────────────────────
-    # STATS
-    # ─────────────────────────────
     stats = db.get_company_stats(user_id)
 
     total_listings  = stats.get("total_listings", 0)
     near_expiry     = stats.get("near_expiry", 0)
     completed_sales = stats.get("completed_sales", 0)
     total_revenue   = stats.get("total_revenue", 0)
-
-    listing_delta = stats.get("listings_delta", 0)
-    sales_delta   = stats.get("sales_delta", 0)
+    listing_delta   = stats.get("listings_delta", 0)
+    sales_delta     = stats.get("sales_delta", 0)
 
     def fmt(v):
         try:
             v = int(v)
             return f"+{v}" if v >= 0 else str(v)
-        except:
+        except Exception:
             return str(v)
 
     st.markdown(f"""
@@ -42,13 +68,6 @@ def render_company_dashboard(db, user_id):
     </div>
     """, unsafe_allow_html=True)
 
-    # ─────────────────────────────
-    # TABS
-    # ─────────────────────────────
-    tab_a, tab_b = st.tabs(["📈  Monthly Trends", "🗺️  Regional Breakdown"])
-
-    months_labels = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-
     region_labels = [
         "Johor", "Kelantan", "Terengganu", "Negeri Sembilan",
         "Sabah", "Selangor", "Perlis", "Perak",
@@ -56,99 +75,66 @@ def render_company_dashboard(db, user_id):
         "Pulau Pinang", "Kuala Lumpur"
     ]
 
-    # ─────────────────────────────
-    # MONTHLY LISTINGS
-    # ─────────────────────────────
+    tab_a, tab_b = st.tabs(["📈  Monthly Trends", "🗺️  Regional Breakdown"])
+
     with tab_a:
         c1, c2 = st.columns(2)
 
         with c1:
             st.markdown("Monthly Company Listings")
-
-            df = pd.DataFrame({"month": months_labels, "value": [0]*12})
-
             try:
                 raw = db.get_company_monthly_listings()
-                if raw:
-                    db_df = pd.DataFrame(raw)
-                    for _, row in db_df.iterrows():
-                        month = str(row["month"]).strip()
-                        if month in months_labels:
-                            df.loc[df["month"] == month, "value"] = row["listings"]
-            except:
-                pass
-
-            st.bar_chart(df, x="month", y="value", height=260)
+            except Exception:
+                raw = []
+            df = _make_month_df(raw, "listings")
+            st.altair_chart(_bar(df, "month", "listings", MONTH_ORDER), use_container_width=True)
 
         with c2:
             st.markdown("Monthly Sales")
-
-            df = pd.DataFrame({"month": months_labels, "value": [0]*12})
-
             try:
                 raw = db.get_company_monthly_sales()
-                if raw:
-                    db_df = pd.DataFrame(raw)
-                    for _, row in db_df.iterrows():
-                        month = str(row["month"]).strip()
-                        if month in months_labels:
-                            df.loc[df["month"] == month, "value"] = row["sales"]
-            except:
-                pass
+            except Exception:
+                raw = []
+            df = _make_month_df(raw, "sales")
+            st.altair_chart(_bar(df, "month", "sales", MONTH_ORDER), use_container_width=True)
 
-            st.bar_chart(df, x="month", y="value", height=260)
-
-    # ─────────────────────────────
-    # REGIONS
-    # ─────────────────────────────
     with tab_b:
         c3, c4 = st.columns(2)
 
         with c3:
             st.markdown("Sales by Region")
-
-            df = pd.DataFrame({"region": region_labels, "value": [0]*len(region_labels)})
-
+            df = pd.DataFrame({"region": region_labels, "sales": [0]*len(region_labels)})
             try:
                 raw = db.get_company_sales_by_region()
                 if raw:
                     db_df = pd.DataFrame(raw)
                     for _, row in db_df.iterrows():
-                        region = str(row["region"]).strip()
-                        if region in region_labels:
-                            df.loc[df["region"] == region, "value"] = row["sales"]
-            except:
+                        r = str(row["region"]).strip()
+                        if r in region_labels:
+                            df.loc[df["region"] == r, "sales"] = row["sales"]
+            except Exception:
                 pass
-
-            st.bar_chart(df, x="region", y="value", height=260)
+            st.altair_chart(_bar(df, "region", "sales", region_labels), use_container_width=True)
 
         with c4:
             st.markdown("Users by Region")
-
-            df = pd.DataFrame({"region": region_labels, "value": [0]*len(region_labels)})
-
+            df = pd.DataFrame({"region": region_labels, "users": [0]*len(region_labels)})
             try:
                 raw = db.get_company_users_by_region()
                 if raw:
                     db_df = pd.DataFrame(raw)
                     for _, row in db_df.iterrows():
-                        region = str(row["region"]).strip()
-                        if region in region_labels:
-                            df.loc[df["region"] == region, "value"] = row["users"]
-            except:
+                        r = str(row["region"]).strip()
+                        if r in region_labels:
+                            df.loc[df["region"] == r, "users"] = row["users"]
+            except Exception:
                 pass
+            st.altair_chart(_bar(df, "region", "users", region_labels), use_container_width=True)
 
-            st.bar_chart(df, x="region", y="value", height=260)
-
-    # ─────────────────────────────
-    # EXPIRY TABLE
-    # ─────────────────────────────
     st.markdown("---")
     st.markdown("### ⏳ Items Approaching Expiry")
-
     try:
         data = db.get_company_expiring_items()
-
         if data:
             df = pd.DataFrame(data)
             if not df.empty:
@@ -158,6 +144,5 @@ def render_company_dashboard(db, user_id):
                 st.info("🎉 No items expiring soon!")
         else:
             st.info("🎉 No items expiring soon!")
-
-    except:
+    except Exception:
         st.info("🎉 No items expiring soon!")
