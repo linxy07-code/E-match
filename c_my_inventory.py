@@ -2,9 +2,30 @@
 import streamlit as st
 from datetime import date, timedelta
 import time
-from c_helpers import save_company_image  # Exact image saver function from your project
+import io
+from PIL import Image, ImageOps
+from c_helpers import save_company_image
 
-
+# ── IMAGE PREVIEW HELPER ──────────────────────────────────────────────────────
+ 
+@st.cache_data(show_spinner=False)
+def _standardize_preview(file_bytes: bytes, file_name: str, target_size=(400, 300)) -> Image.Image:
+    """
+    Fit the uploaded image inside a fixed canvas without cropping,
+    padding any empty space with white. Returns a PIL Image ready for st.image().
+    Identical approach to upload.py's _process_image_bytes().
+    """
+    img = Image.open(io.BytesIO(file_bytes))
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+    img = ImageOps.exif_transpose(img)
+    img.thumbnail(target_size, Image.Resampling.LANCZOS)
+    canvas = Image.new("RGB", target_size, color="white")
+    paste_x = (target_size[0] - img.size[0]) // 2
+    paste_y = (target_size[1] - img.size[1]) // 2
+    canvas.paste(img, (paste_x, paste_y))
+    return canvas
+    
 # ── HELPERS ───────────────────────────────────────────────────────────────────
 
 def _days_until_expiry(expiry_str):
@@ -42,14 +63,18 @@ def _extract_image_and_notes(notes_field):
     return None, notes_field
 
 
-def _open_upload_with_listing(item, listing_label, listing_type):
-    """Prepare the upload form for a near-expiry listing action."""
+def _open_upload_with_listing(item, listing_label, listing_type, item_id):
+    """Prepare the upload form for a near-expiry listing action and record it."""
     for key in ("co_item_name", "co_listing_type_label"):
         st.session_state.pop(key, None)
 
     st.session_state.ne_prefill_listing_label = listing_label
     st.session_state.ne_prefill_listing_type = listing_type
     st.session_state.ne_prefill_item_name = item.get("item_name", "")
+
+    # Mark this inventory item as having an action taken this session
+    st.session_state[f"ne_actioned_{item_id}"] = True
+
     st.session_state.current_page = "Upload Inventory"
     st.rerun()
 
@@ -201,21 +226,25 @@ def render_company_inventory_page(db, user_id):
             if (d := _days_until_expiry(i.get("expiry_date"))) is not None and 0 <= d <= 14
         ],
         key=lambda i: _days_until_expiry(i.get("expiry_date"))
-)
+    )
     if urgent:
         st.markdown(
             '<div class="inv-section-heading">🚨 Expiry Alerts</div>',
             unsafe_allow_html=True,
         )
         for it in urgent:
-            days   = _days_until_expiry(it.get("expiry_date"))
-            qty    = it.get("quantity", 0)
-            unit   = it.get("unit", "")
+            days         = _days_until_expiry(it.get("expiry_date"))
+            qty          = it.get("quantity", 0)
+            unit         = it.get("unit", "")
+            it_id        = it["id"]
+            actioned_key = f"ne_actioned_{it_id}"
+
             banner_color = "#f59e0b" if days > 7 else "#ef4444"
             border_color = "#fbbf24" if days > 7 else "#fca5a5"
             bg_color     = "#fffbeb" if days > 7 else "#fef2f2"
             txt_color    = "#78350f" if days > 7 else "#991b1b"
             label        = f"{days}d left" if days > 0 else "TODAY"
+
             st.markdown(f"""
             <div style="background:{bg_color};border:1px solid {border_color};
             border-left:4px solid {banner_color};border-radius:10px;
@@ -231,20 +260,34 @@ def render_company_inventory_page(db, user_id):
             </div>
             """, unsafe_allow_html=True)
 
-            with st.expander("Actions (Sell / Giveaway / Barter)"):
-                sell_col, free_col, barter_col = st.columns(3)
+            # ── Post-action state: user already triggered an upload ────────
+            if st.session_state.get(actioned_key, False):
+                st.info("📋 Check item status in My Items")
+                with st.expander("Click here to check item"):
+                    if st.button(
+                        "🗂️ Go to My Uploads / Items",
+                        key=f"ne_goto_items_{it_id}",
+                        use_container_width=True,
+                    ):
+                        st.session_state.current_page = "My Items"
+                        st.rerun()
 
-                with sell_col:
-                    if st.button("💵 Sell", key=f"ne_sell_{it['id']}", use_container_width=True):
-                        _open_upload_with_listing(it, "💵 Sell", "sell")
+            # ── Default state: show the three action buttons ───────────────
+            else:
+                with st.expander("Actions (Sell / Giveaway / Barter)"):
+                    sell_col, free_col, barter_col = st.columns(3)
 
-                with free_col:
-                    if st.button("🆓 Giveaway", key=f"ne_free_{it['id']}", use_container_width=True):
-                        _open_upload_with_listing(it, "🆓 Free of Charge", "free")
+                    with sell_col:
+                        if st.button("💵 Sell", key=f"ne_sell_{it_id}", use_container_width=True):
+                            _open_upload_with_listing(it, "💵 Sell", "sell", it_id)
 
-                with barter_col:
-                    if st.button("🔄 Barter", key=f"ne_barter_{it['id']}", use_container_width=True):
-                        _open_upload_with_listing(it, "🔄 Exchange / Swap", "exchange")
+                    with free_col:
+                        if st.button("🆓 Giveaway", key=f"ne_free_{it_id}", use_container_width=True):
+                            _open_upload_with_listing(it, "🆓 Free of Charge", "free", it_id)
+
+                    with barter_col:
+                        if st.button("🔄 Barter", key=f"ne_barter_{it_id}", use_container_width=True):
+                            _open_upload_with_listing(it, "🔄 Exchange / Swap", "exchange", it_id)
 
         st.markdown("")
 
@@ -256,18 +299,18 @@ def render_company_inventory_page(db, user_id):
 
     with st.expander("Add a new item to inventory", expanded=(total_items == 0)):
         col_main, col_side = st.columns([2, 1])
-        
+
         with col_main:
             new_name     = st.text_input("Item Name *", key="inv_new_name")
             new_category = st.selectbox("Category", CATEGORIES, key="inv_new_cat")
             new_supplier = st.text_input("Supplier / Brand", key="inv_new_supplier", placeholder="Optional")
-            
+
             c_qty, c_unit = st.columns(2)
             with c_qty:
                 new_qty  = st.number_input("Quantity *", min_value=0.0, step=1.0, format="%.2f", key="inv_new_qty")
             with c_unit:
                 new_unit = st.selectbox("Unit", UNITS, key="inv_new_unit")
-                
+
             new_has_expiry = st.checkbox("This item has an expiry date", key="inv_new_has_exp")
             new_expiry = (
                 st.date_input("Expiry Date", key="inv_new_expiry", min_value=date.today())
@@ -275,13 +318,14 @@ def render_company_inventory_page(db, user_id):
             )
             new_notes = st.text_area("Notes (optional)", key="inv_new_notes",
                                      placeholder="Storage location, batch number, etc.", height=68)
-            
+
         with col_side:
             st.markdown("#### 🖼️ Item Image")
             uploaded_file = st.file_uploader("Upload image", type=["jpg", "jpeg", "png", "webp"], key="inv_new_img")
-            
+
             if uploaded_file:
-                st.image(uploaded_file, caption="Image Preview", use_container_width=True)
+                preview = _standardize_preview(uploaded_file.getvalue(), uploaded_file.name)
+                st.image(preview, caption="Preview (400×300)", use_container_width=True)
 
         if st.button("✅ Add Item", key="inv_btn_add", use_container_width=True):
             if not new_name.strip():
@@ -294,12 +338,10 @@ def render_company_inventory_page(db, user_id):
                     with st.spinner("Uploading item image..."):
                         image_url = save_company_image(uploaded_file)
 
-                # Combine raw notes data with image link safely into the existing notes footprint
                 final_notes = new_notes.strip()
                 if image_url:
                     final_notes = f"{final_notes} ||IMG:{image_url}".strip()
 
-                # Fully preserves existing DB arguments constraint signature!
                 result = db.add_inventory_item(
                     company_id   = user_id,
                     item_name    = new_name.strip(),
@@ -312,6 +354,12 @@ def render_company_inventory_page(db, user_id):
                 )
                 if result.get("success"):
                     st.success(f"✅ '{new_name.strip()}' added to inventory.")
+                    for k in [
+                        "inv_new_name", "inv_new_cat", "inv_new_supplier",
+                        "inv_new_qty", "inv_new_unit", "inv_new_has_exp",
+                        "inv_new_expiry", "inv_new_notes", "inv_new_img",
+                    ]:
+                        st.session_state.pop(k, None)
                     time.sleep(0.4)
                     st.rerun()
                 else:
@@ -381,21 +429,19 @@ def render_company_inventory_page(db, user_id):
         qty      = item.get("quantity", 0)
         unit     = item.get("unit", "")
         exp_str  = item.get("expiry_date") or "No expiry date"
-        
-        # Safely extract dynamic image link out of the notes field string wrapper
+
         raw_notes = item.get("notes") or ""
         img_url, display_notes = _extract_image_and_notes(raw_notes)
 
-        # Streamlit Native Card Row (1:2 image to info structural columns)
         img_col, info_col = st.columns([1, 2])
-        
+
         with img_col:
             if img_url:
                 st.markdown(
                     f"""
                     <div style="
                         width: 100%;
-                        height: 120px;
+                        height: 220px;
                         border-radius: 10px;
                         border: 1px solid #e5e7eb;
                         background: #ffffff;
@@ -416,16 +462,20 @@ def render_company_inventory_page(db, user_id):
                 )
             else:
                 st.markdown(
-                    "<div style='height:120px;background:#f0fdf4;        border-radius:10px;"
-                    "display:flex;align-items:center;        justify-content:center;"
+                    "<div style='height:120px;background:#f0fdf4;border-radius:10px;"
+                    "display:flex;align-items:center;justify-content:center;"
                     "color:#86efac;font-size:2.5rem'>🏭</div>",
                     unsafe_allow_html=True,
                 )
 
         with info_col:
             badge_html = f'<span class="inv-stock-badge {badge_cls}">{badge_emoji} {badge_lbl}</span>'
-            notes_html = f"<div class='my-item-row' style='color:#94a3b8; font-style:italic;'>📝 <strong>Notes:</strong> {display_notes}</div>" if display_notes.strip() else ""
-            
+            notes_html = (
+                f"<div class='my-item-row' style='color:#94a3b8; font-style:italic;'>"
+                f"📝 <strong>Notes:</strong> {display_notes}</div>"
+                if display_notes.strip() else ""
+            )
+
             st.markdown(f"""
             <div class="my-item-card">
                 <p class="my-item-title">{item['item_name']} {badge_html}</p>
@@ -453,7 +503,7 @@ def render_company_inventory_page(db, user_id):
                         format="%.2f", key=f"inv_used_qty_{item_id}",
                     )
                     use_note = st.text_input("Usage note (optional)", key=f"inv_use_note_{item_id}")
-                    
+
                     if st.button("✅ Confirm Usage", key=f"inv_confirm_use_{item_id}", use_container_width=True):
                         if used <= 0:
                             st.warning("Enter a quantity greater than 0.")
@@ -552,21 +602,20 @@ def render_company_inventory_page(db, user_id):
                                 with st.spinner("Uploading new image..."):
                                     final_url = save_company_image(edit_uploaded)
 
-                            # Re-encode image link inside updated text notes boundary footprint
                             updated_notes = edit_notes_input.strip()
                             if final_url:
                                 updated_notes = f"{updated_notes} ||IMG:{final_url}".strip()
 
                             res = db.update_inventory_item(
-                                item_id   = item_id,
-                                user_id   = user_id,
-                                item_name = edit_name.strip(),
-                                category  = edit_category,
-                                quantity  = float(edit_qty),
-                                unit      = edit_unit,
-                                supplier  = edit_supplier.strip() or None,
+                                item_id     = item_id,
+                                user_id     = user_id,
+                                item_name   = edit_name.strip(),
+                                category    = edit_category,
+                                quantity    = float(edit_qty),
+                                unit        = edit_unit,
+                                supplier    = edit_supplier.strip() or None,
                                 expiry_date = edit_expiry.isoformat() if edit_expiry else None,
-                                notes     = updated_notes if updated_notes else None,
+                                notes       = updated_notes if updated_notes else None,
                             )
                             if res.get("success"):
                                 st.success("✅ Item updated successfully.")
@@ -577,4 +626,3 @@ def render_company_inventory_page(db, user_id):
                                 st.error(f"❌ {res.get('error', 'Update failed.')}")
 
         st.markdown("---")
-    
