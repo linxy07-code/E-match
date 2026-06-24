@@ -195,10 +195,13 @@ def render_company_inventory_page(db, user_id):
     """, unsafe_allow_html=True)
 
     # ── Expiry alert banners ──────────────────────────────────────────────────
-    urgent = [
-        i for i in items
-        if (d := _days_until_expiry(i.get("expiry_date"))) is not None and 0 <= d <= 14
-    ]
+    urgent = sorted(
+        [
+            i for i in items
+            if (d := _days_until_expiry(i.get("expiry_date"))) is not None and 0 <= d <= 14
+        ],
+        key=lambda i: _days_until_expiry(i.get("expiry_date"))
+)
     if urgent:
         st.markdown(
             '<div class="inv-section-heading">🚨 Expiry Alerts</div>',
@@ -228,16 +231,20 @@ def render_company_inventory_page(db, user_id):
             </div>
             """, unsafe_allow_html=True)
 
-            sell_col, free_col, barter_col = st.columns(3)
-            with sell_col:
-                if st.button("💵 Sell", key=f"ne_sell_{it['id']}", use_container_width=True):
-                    _open_upload_with_listing(it, "💵 Sell", "sell")
-            with free_col:
-                if st.button("🆓 Giveaway", key=f"ne_free_{it['id']}", use_container_width=True):
-                    _open_upload_with_listing(it, "🆓 Free of Charge", "free")
-            with barter_col:
-                if st.button("🔄 Barter", key=f"ne_barter_{it['id']}", use_container_width=True):
-                    _open_upload_with_listing(it, "🔄 Exchange / Swap", "exchange")
+            with st.expander("Actions (Sell / Giveaway / Barter)"):
+                sell_col, free_col, barter_col = st.columns(3)
+
+                with sell_col:
+                    if st.button("💵 Sell", key=f"ne_sell_{it['id']}", use_container_width=True):
+                        _open_upload_with_listing(it, "💵 Sell", "sell")
+
+                with free_col:
+                    if st.button("🆓 Giveaway", key=f"ne_free_{it['id']}", use_container_width=True):
+                        _open_upload_with_listing(it, "🆓 Free of Charge", "free")
+
+                with barter_col:
+                    if st.button("🔄 Barter", key=f"ne_barter_{it['id']}", use_container_width=True):
+                        _open_upload_with_listing(it, "🔄 Exchange / Swap", "exchange")
 
         st.markdown("")
 
@@ -384,11 +391,33 @@ def render_company_inventory_page(db, user_id):
         
         with img_col:
             if img_url:
-                st.image(img_url, use_container_width=True)
+                st.markdown(
+                    f"""
+                    <div style="
+                        width: 100%;
+                        height: 120px;
+                        border-radius: 10px;
+                        border: 1px solid #e5e7eb;
+                        background: #ffffff;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        overflow: hidden;
+                    ">
+                        <img src="{img_url}"
+                             style="
+                                max-width: 100%;
+                                max-height: 100%;
+                                object-fit: contain;
+                             ">
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
             else:
                 st.markdown(
-                    "<div style='height:140px;background:#f0fdf4;border-radius:10px;"
-                    "display:flex;align-items:center;justify-content:center;"
+                    "<div style='height:120px;background:#f0fdf4;        border-radius:10px;"
+                    "display:flex;align-items:center;        justify-content:center;"
                     "color:#86efac;font-size:2.5rem'>🏭</div>",
                     unsafe_allow_html=True,
                 )
