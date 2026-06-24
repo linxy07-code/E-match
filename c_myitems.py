@@ -51,8 +51,26 @@ def render_company_items(db, user_id):
         st.info("You haven't posted any items yet. Go to **Upload Item** to get started!")
         return
 
+    # ✅ STEP 1: attach reserved ONCE
+    for item in items:
+        item["reserved"] = db.is_company_item_reserved(item["item_id"])
+
+    # ✅ STEP 2: sort ONCE (FIXED LOCATION)
+    def priority(item):
+        reserved = item["reserved"]
+        seller_shipped = item.get("seller_shipped", False)
+
+        if reserved and not seller_shipped:
+            return 0
+        if reserved and seller_shipped:
+            return 1
+        return 2
+
+    items.sort(key=priority)
+
     st.caption(f"{len(items)} active listing(s)")
 
+    # ✅ STEP 3: render ONLY (no loops/sorts inside)
     for item in items:
         lt = item.get("listing_type") or "free"
         price = item.get("price")
@@ -76,6 +94,9 @@ def render_company_items(db, user_id):
 
         seller_shipped = item.get("seller_shipped", False)
         buyer_received = item.get("buyer_received", False)
+
+        item_id = item["item_id"]
+        reserved = item["reserved"]
 
         img_col, info_col = st.columns([1, 2])
 
@@ -102,9 +123,6 @@ def render_company_items(db, user_id):
             </div>
             """, unsafe_allow_html=True)
 
-            item_id = item["item_id"]
-            reserved = db.is_company_item_reserved(item_id)
-
             completed_key = f"co_completed_{item_id}"
             if completed_key not in st.session_state:
                 st.session_state[completed_key] = False
@@ -126,7 +144,6 @@ def render_company_items(db, user_id):
                 st.info("⏳ Waiting for seller to ship")
 
             else:
-                # UPDATED: This now matches the blue "Waiting for buyers" style
                 st.info("⏳ Waiting for buyers")
 
             # ACTION BUTTONS
