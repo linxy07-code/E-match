@@ -1252,8 +1252,7 @@ class EcoMatchDB:
                     cursor.execute("""
                         SELECT id AS item_id, item_name, stock_name, category,
                                region, quantity, description, expiry_date,
-                               image_path, listing_type, price, phone_number,
-                               exchange_offer, exchange_want,
+                               image_path, listing_type, price, phone_number,exchange_offer, exchange_want,
                                seller_shipped, buyer_received, status, alert_sent,
                                created_at
                         FROM company_items

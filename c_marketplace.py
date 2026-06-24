@@ -239,18 +239,25 @@ def render_company_marketplace(db, user_id):
             item_want = ""
 
             if listing_type == "exchange":
-                text = base_exchange_desc
+                # Prefer dedicated columns (set by c_upload.py)
+                item_offer = (item.get("exchange_offer") or "").strip()
+                item_want  = (item.get("exchange_want")  or "").strip()
 
-                offer_split = re.split(r"OFFER\s*:", text, flags=re.IGNORECASE)
-                if len(offer_split) > 1:
-                    rest = offer_split[1]
-                    want_split = re.split(r"WANT\s*:", rest, flags=re.IGNORECASE)
+                # Fall back to parsing description for legacy entries
+                if not item_offer and not item_want:
+                    text = base_exchange_desc
+                    offer_split = re.split(r"OFFER\s*:", text, flags=re.IGNORECASE)
+                    if len(offer_split) > 1:
+                        rest = offer_split[1]
+                        want_split = re.split(r"WANT\s*:", rest, flags=re.IGNORECASE)
+                        item_offer = want_split[0].strip() if len(want_split) > 0 else "Not specified"
+                        item_want  = want_split[1].strip() if len(want_split) > 1 else "Not specified"
+                    else:
+                        item_offer = "Not specified"
+                        item_want  = "Not specified"
 
-                    item_offer = want_split[0].strip() if len(want_split) > 0 else "Not specified"
-                    item_want = want_split[1].strip() if len(want_split) > 1 else "Not specified"
-                else:
-                    item_offer = "Not specified"
-                    item_want = "Not specified"
+                item_offer = item_offer or "Not specified"
+                item_want  = item_want  or "Not specified"
 
             raw_company = str(item.get('company_name') or item.get('seller_name') or "—").strip()
 
@@ -287,18 +294,16 @@ def render_company_marketplace(db, user_id):
 
 
             # ── 6. ZERO-PREVIEW SEAMLESS EXPANDABLE TOGGLES ───────────────────
-            if description_clean == "No description provided.":
+            if listing_type == "exchange":
+                clean_offer = html.escape(item.get("exchange_offer") or "—")
+                clean_want  = html.escape(item.get("exchange_want")  or "—")
+                full_html = f'📥 <strong>OFFER:</strong> {clean_offer}<br><span style="display:inline-block; margin-top:4px;">📤 <strong>WANT:</strong> {clean_want}</span>'
+                exchange_desc = f'<input type="checkbox" id="toggle_{item_id}" class="desc-toggle"><span class="desc-full">{full_html}</span><label for="toggle_{item_id}" class="desc-label"></label>'
+            elif description_clean == "No description provided.":
                 exchange_desc = '<span style="font-style: italic; color:#a3a3a3;">No description provided.</span>'
             else:
-                if listing_type == "exchange":
-                    clean_offer = html.escape(item_offer or "—")
-                    clean_want = html.escape(item_want or "—")
-                    full_html = f'📥 <strong>OFFER:</strong> {clean_offer}<br><span style="display:inline-block; margin-top:4px;">📤 <strong>WANT:</strong> {clean_want}</span>'
-                else:
-                    full_html = f'📥 {description_clean}'
+                exchange_desc = f'<input type="checkbox" id="toggle_{item_id}" class="desc-toggle"><span class="desc-full">{description_clean}</span><label for="toggle_{item_id}" class="desc-label"></label>'
                 
-                exchange_desc = f'<input type="checkbox" id="toggle_{item_id}" class="desc-toggle"><span class="desc-full">{full_html}</span><label for="toggle_{item_id}" class="desc-label"></label>'
-            
             # ✅ FIXED: Completely removed price_row variable injection here to keep cards even
             full_card_html = (
                 f'<div class="mp-card">'

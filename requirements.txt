@@ -4,3 +4,5 @@ bcrypt
 cloudinary
 Pillow
 streamlit-cookies-controller
+altair
+pandas
