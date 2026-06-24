@@ -594,15 +594,18 @@ else:
 
     # ── LOGIN POPUP (once per session) ────────────────────────────────────────
     if "has_shown_popup" not in st.session_state:
+        st.session_state["has_shown_popup"] = True
+
         try:
             notif_res = db.get_notifications(user_id)
             notifs    = notif_res.get("notifications", []) if isinstance(notif_res, dict) else notif_res
             unread_n  = [n for n in notifs if not n.get("is_read", True)]
+
             if unread_n:
                 show_login_notifications(unread_n)
+
         except Exception:
             pass
-        st.session_state["has_shown_popup"] = True
 
     # ── BAN CHECK ─────────────────────────────────────────────────────────────
     user_status_data = db.get_user_by_id(user_id)

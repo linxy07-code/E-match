@@ -1193,26 +1193,52 @@ class EcoMatchDB:
             st.code(traceback.format_exc())
             return {"transactions": []}
 
-    def is_item_reserved(self, item_id):
+    def get_reserved_item_ids(self, user_id):
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
-                        SELECT reserved_by, status
+                        SELECT id
                         FROM items
-                        WHERE id = %s
-                    """, (item_id,))
-                    row = cursor.fetchone()
-                    if not row:
-                        return False
-                    if row["reserved_by"] is not None:
-                        return True
-                    if row["status"] in ["reserved", "waiting_seller", "waiting_buyer"]:
-                        return True
-            return False
-        except Exception:
-            return False
+                        WHERE user_id = %s
+                        AND (
+                            reserved_by IS NOT NULL
+                            OR status IN (
+                                'reserved',
+                                'waiting_seller',
+                                'waiting_buyer'
+                            )
+                        )
+                    """, (user_id,))
 
+                    return {row["id"] for row in cursor.fetchall()}
+
+        except Exception:
+            return set()
+        
+    def get_reserved_company_item_ids(self, user_id):
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT id
+                        FROM company_items
+                        WHERE user_id = %s
+                        AND (
+                            reserved_by IS NOT NULL
+                            OR status IN (
+                                'reserved',
+                                'waiting_seller',
+                                'waiting_buyer'
+                            )
+                        )
+                    """, (user_id,))
+
+                    return {row["id"] for row in cursor.fetchall()}
+
+        except Exception:
+            return set()
+    
     # ── COMPANY INVENTORY (separate table — never mixed with personal items) ──
 
     def add_company_item(self, user_id, item_name, stock_name, category, region,

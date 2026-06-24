@@ -12,8 +12,10 @@ def render_my_items_page(db, user_id, get_transaction_status, _lt_badge):
     items_res = db.get_user_items(user_id)
     items = items_res.get("items", [])
 
+    reserved_ids = db.get_reserved_item_ids(user_id)
+
     for item in items:
-        item["reserved"] = db.is_item_reserved(item["item_id"])
+        item["reserved"] = item["item_id"] in reserved_ids
 
     def priority(item):
         reserved = item["reserved"]
@@ -64,7 +66,10 @@ def render_my_items_page(db, user_id, get_transaction_status, _lt_badge):
         )
 
         desc = item.get("description") or ""
-        desc_block = f"<p class='my-item-desc'>{desc}</p>" if desc else ""
+        desc_block = (
+            f"<p class='my-item-desc'>{desc.replace('\n', '<br>')}</p>"
+            if desc else ""
+        )
 
         img_col, info_col = st.columns([1, 2])
 

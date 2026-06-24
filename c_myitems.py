@@ -52,8 +52,10 @@ def render_company_items(db, user_id):
         return
 
     # ✅ STEP 1: attach reserved ONCE
+    reserved_ids = db.get_reserved_company_item_ids(user_id)
+
     for item in items:
-        item["reserved"] = db.is_company_item_reserved(item["item_id"])
+        item["reserved"] = item["item_id"] in reserved_ids
 
     # ✅ STEP 2: sort ONCE (FIXED LOCATION)
     def priority(item):
