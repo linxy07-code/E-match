@@ -12,6 +12,27 @@ def render_my_items_page(db, user_id, get_transaction_status, _lt_badge):
     items_res = db.get_user_items(user_id)
     items = items_res.get("items", [])
 
+    for item in items:
+        item["reserved"] = db.is_item_reserved(item["item_id"])
+
+    def priority(item):
+        reserved = item["reserved"]
+        seller_shipped = item.get("seller_shipped", False)
+
+        # 1. reserved + not shipped (HIGHEST)
+        if reserved and not seller_shipped:
+            return 0
+
+        # 2. reserved + shipped
+        if reserved and seller_shipped:
+            return 1
+
+        # 3. not reserved
+        return 2
+
+
+    items.sort(key=priority)
+
     if not items:
         st.info("You haven't posted any items yet. Go to **Upload Item** to get started!")
         return
@@ -75,7 +96,7 @@ def render_my_items_page(db, user_id, get_transaction_status, _lt_badge):
             seller_shipped = item.get("seller_shipped", False)
             buyer_received = item.get("buyer_received", False)
 
-            reserved = db.is_item_reserved(item_id)
+            reserved = item["reserved"]
 
             # ─────────────────────────────────────────────
             # SESSION FLAGS
