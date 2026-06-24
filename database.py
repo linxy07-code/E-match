@@ -962,7 +962,7 @@ class EcoMatchDB:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     stats = {}
-                    cursor.execute("SELECT COUNT(*) FROM users")
+                    cursor.execute("SELECT COUNT(*) FROM users WHERE user_type = 'Personal'")
                     stats["total_users"] = cursor.fetchone()["count"] or 0
                     cursor.execute("SELECT COUNT(*) FROM items WHERE is_active = 1")
                     stats["active_listings"] = cursor.fetchone()["count"] or 0
