@@ -255,91 +255,109 @@ def show_transaction_complete_dialog(item_name="your item"):
             st.session_state.current_page = dest
             st.rerun()
 
+is_banned = False
+
+if st.session_state.get("logged_in"):
+    _uid = st.session_state.get("user_id")
+    _user = db.get_user_by_id(_uid)
+    is_banned = bool(_user and _user.get("status") == "Banned")
 
 # ── SIDEBAR ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    user_type_session = st.session_state.get("user_type", "Personal")
-    brand_icon = "🏢" if user_type_session == "Company" else "🌿"
-    brand_sub  = "Company Resource Platform" if user_type_session == "Company" else "Resource Organisation Management"
-    st.markdown(
-        f'<div class="sidebar-brand"><h2>{brand_icon} E-match</h2><p>{brand_sub}</p></div>',
-        unsafe_allow_html=True,
-    )
 
-    if st.session_state.logged_in:
-        user_id = st.session_state.get("user_id")
-        unread  = db.count_unread_notifications(user_id)
-
-        type_color = "#60a5fa" if user_type_session == "Company" else "#86efac"
-        
-        # Display trust score for ALL user types
-        trust_line = (
-            f'⭐ Trust: <strong style="color:#d1fae5!important">'
-            f'{st.session_state.get("trust_score",10)} / 10</strong><br>'
-        )
-
-        st.markdown(f"""
-        <div style="padding:10px 4px">
-            <p style="font-size:.78rem;line-height:1.8;color:#86efac!important">
-                {'🏢' if user_type_session=='Company' else '👤'} Type:
-                <strong style="color:{type_color}!important">{user_type_session}</strong><br>
-                🌍 Region: <strong style="color:#d1fae5!important">{st.session_state.get('region','—')}</strong><br>
-                👤 User: <strong style="color:#d1fae5!important">{st.session_state.username}</strong><br>
-                {trust_line}
-            </p>
+    if is_banned:
+        st.markdown("""
+        <div class="sidebar-brand">
+            <h2>🌿 E-match</h2>
+            <p>Account Restricted</p>
         </div>
         """, unsafe_allow_html=True)
 
-        notif_label = NOTIF_BASE + (f" ({unread})" if unread else "")
 
-        if user_type_session == "Company":
-            NAV_OPTIONS = [
-                ("🏭  Company Marketplace",   "Company Marketplace"),
-                ("🛒  My Order Cart",         "Company Cart"),
-                ("📜  Transaction History",   "Company Transactions"),
-                ("🗂️  My Inventory",          "Company Inventory"),
-                ("📦  Upload Items",      "Upload Inventory"),
-                ("🗂️  My Uploads / Items",    "My Items"),
-                ("🛡️  Trust & Safety",        "Company Trust & Safety"),
-                ("📊  Company Dashboard",     "Company Dashboard"),
-                (notif_label,                 "Notifications"),
-            ]
-        else:
-            NAV_OPTIONS = [
-                ("🛒  Marketplace",           "Marketplace"),
-                ("🧾  My Cart",               "My Cart"),
-                ("📜  Past Transactions",     "Past Transactions"),
-                ("📦  Upload Item",           "Upload Item"),
-                ("🧾  My Uploads / Items",    "My Items"),
-                ("🛡️  Trust & Safety",        "Trust & Safety"),
-                ("📊  Dashboard",             "Dashboard"),
-                (notif_label,                 "Notifications"),
-            ]
+    if not is_banned:
 
-        selection = st.radio(
-            "Navigation",
-            NAV_OPTIONS,
-            index=next((i for i, (_, p) in enumerate(NAV_OPTIONS) if p == page_key), 0),
-            format_func=lambda x: x[0],
-            label_visibility="collapsed",
+        user_type_session = st.session_state.get("user_type", "Personal")
+        brand_icon = "🏢" if user_type_session == "Company" else "🌿"
+        brand_sub  = "Company Resource Platform" if user_type_session == "Company" else "Resource Organisation Management"
+        st.markdown(
+            f'<div class="sidebar-brand"><h2>{brand_icon} E-match</h2><p>{brand_sub}</p></div>',
+            unsafe_allow_html=True,
         )
 
-        _, page = selection
-        if st.session_state.current_page != page:
-            st.session_state.current_page = page
-            st.rerun()
+        if st.session_state.logged_in:
+            user_id = st.session_state.get("user_id")
+            unread  = db.count_unread_notifications(user_id)
 
-        st.markdown("---")
-        if st.button("🚪 Logout", width="stretch"):
-            # FIX #5: properly clear remember-me cookie on logout
-            try:
-                all_cookies = controller.getAll()
-                if "ematch_user" in all_cookies:
-                    controller.remove("ematch_user")
-            except Exception:
-                pass
-            st.session_state.clear()
-            st.rerun()
+            type_color = "#60a5fa" if user_type_session == "Company" else "#86efac"
+        
+            # Display trust score for ALL user types
+            trust_line = (
+                f'⭐ Trust: <strong style="color:#d1fae5!important">'
+                f'{st.session_state.get("trust_score",10)} / 10</strong><br>'
+            )
+
+            st.markdown(f"""
+            <div style="padding:10px 4px">
+                <p style="font-size:.78rem;line-height:1.8;color:#86efac!important">
+                    {'🏢' if user_type_session=='Company' else '👤'} Type:
+                    <strong style="color:{type_color}!important">{user_type_session}</strong><br>
+                    🌍 Region: <strong style="color:#d1fae5!important">{st.session_state.get('region','—')}</strong><br>
+                    👤 User: <strong style="color:#d1fae5!important">{st.session_state.username}</strong><br>
+                    {trust_line}
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+
+            notif_label = NOTIF_BASE + (f" ({unread})" if unread else "")
+
+            if user_type_session == "Company":
+                NAV_OPTIONS = [
+                    ("🏭  Company Marketplace",   "Company Marketplace"),
+                    ("🛒  My Order Cart",         "Company Cart"),
+                    ("📜  Transaction History",   "Company Transactions"),
+                    ("🗂️  My Inventory",          "Company Inventory"),
+                    ("📦  Upload Items",      "Upload Inventory"),
+                    ("🗂️  My Uploads / Items",    "My Items"),
+                    ("🛡️  Trust & Safety",        "Company Trust & Safety"),
+                    ("📊  Company Dashboard",     "Company Dashboard"),
+                    (notif_label,                 "Notifications"),
+                ]
+            else:
+                NAV_OPTIONS = [
+                    ("🛒  Marketplace",           "Marketplace"),
+                    ("🧾  My Cart",               "My Cart"),
+                    ("📜  Past Transactions",     "Past Transactions"),
+                    ("📦  Upload Item",           "Upload Item"),
+                    ("🧾  My Uploads / Items",    "My Items"),
+                    ("🛡️  Trust & Safety",        "Trust & Safety"),
+                    ("📊  Dashboard",             "Dashboard"),
+                    (notif_label,                 "Notifications"),
+                ]
+    
+            selection = st.radio(
+                "Navigation",
+                NAV_OPTIONS,
+                index=next((i for i, (_, p) in enumerate(NAV_OPTIONS) if p == page_key), 0),
+                format_func=lambda x: x[0],
+                label_visibility="collapsed",
+            )
+
+            _, page = selection
+            if st.session_state.current_page != page:
+                st.session_state.current_page = page
+                st.rerun()
+
+            st.markdown("---")
+            if st.button("🚪 Logout", width="stretch"):
+                # FIX #5: properly clear remember-me cookie on logout
+                try:
+                    all_cookies = controller.getAll()
+                    if "ematch_user" in all_cookies:
+                        controller.remove("ematch_user")
+                except Exception:
+                    pass
+                st.session_state.clear()
+                st.rerun()
 
 
 # ── AUTH FLOW ─────────────────────────────────────────────────────────────────
@@ -612,13 +630,19 @@ else:
     user_status_data = db.get_user_by_id(user_id)
     if user_status_data and user_status_data.get("status") == "Banned":
         st.markdown("""
-        <div style="background:#fee2e2;border:1px solid #fca5a5;padding:30px;
+        <div style="background:#fee2e2;border:1px solid #fca5a5;padding:20px;
         border-radius:14px;margin-top:50px;text-align:center;">
             <h1 style="color:#dc2626;margin:0 0 10px 0;">❌ Access Denied</h1>
             <p style="color:#991b1b;margin:0 0 20px 0;">
-                Your account has been <strong>Banned</strong> by an administrator.
-            </p>
+                Your E-Match account has been suspended due to misconduct and violations of our platform policies.<br>
+                Access to E-Match has been restricted.<br>
+                If you believe this action was taken in error or have any questions, please contact the E-Match team at: e-match8888@gmail.com<br>
+                Thank you.
         </div>""", unsafe_allow_html=True)
+
+        st.write("")
+        st.write("")
+
         if st.button("🚪 Leave Platform", width="stretch"):
             try: controller.remove("ematch_user")
             except Exception: pass
