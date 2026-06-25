@@ -117,16 +117,21 @@ def render_company_cart(db, user_id):
             if received_key not in st.session_state:
                 st.session_state[received_key] = False
 
+            # AFTER
             if st.session_state[received_key]:
                 st.info("✅ Receipt confirmed — transaction is being processed.")
             else:
                 b1, b2 = st.columns(2)
 
                 with b1:
-                    if st.button("❌ Cancel Reservation", key=f"co_cancel_{item_id}"):
-                        db.cancel_company_reservation(item_id)
-                        st.warning("Reservation cancelled.")
-                        st.rerun()
+                    if seller_shipped:
+                        st.button("❌ Cancel Reservation", key=f"co_cancel_{item_id}", disabled=True,
+                                  help="Cannot cancel after seller has shipped the item.")
+                    else:
+                        if st.button("❌ Cancel Reservation", key=f"co_cancel_{item_id}"):
+                            db.cancel_company_reservation(item_id)
+                            st.warning("Reservation cancelled.")
+                            st.rerun()
 
                 with b2:
                     if st.button("✅ Received Item", key=f"co_received_{item_id}"):

@@ -248,12 +248,10 @@ def show_transaction_complete_dialog(item_name="your item"):
     c1, c2 = st.columns(2)
     with c1:
         if st.button("📜 View History", width="stretch"):
-            st.session_state.show_txn_complete_dialog = False
             st.session_state.current_page = "Company Transactions" if user_type == "Company" else "Past Transactions"
             st.rerun()
     with c2:
         if st.button("🛒 Continue Shopping", width="stretch", type="primary"):
-            st.session_state.show_txn_complete_dialog = False
             st.session_state.current_page = dest
             st.rerun()
 
@@ -559,14 +557,19 @@ else:
     user_type = st.session_state.get("user_type", "Personal")
 
     # ── TRANSACTION COMPLETE DIALOG (#6 balloons triggered in mycart/company_cart) ──
+    # AFTER (fixed)
     if st.session_state.get("show_txn_complete_dialog"):
-        show_transaction_complete_dialog(
-            st.session_state.get("txn_complete_item", "your item")
-        )
+        _item_name = st.session_state.get("txn_complete_item", "your item")
+        st.session_state.show_txn_complete_dialog = False  # clear BEFORE showing
+        st.session_state.txn_complete_item = None
+        show_transaction_complete_dialog(_item_name)
 
     # ── CART POPUP ────────────────────────────────────────────────────────────
+    # AFTER (fixed)
     if st.session_state.get("show_cart_popup"):
         item_name = st.session_state.get("cart_popup_item", "Item")
+        st.session_state.show_cart_popup = False  # clear BEFORE showing
+        st.session_state.cart_popup_item = None
 
         @st.dialog("🛒 Item Added to Cart!")
         def cart_popup():
@@ -582,12 +585,10 @@ else:
             with col1:
                 cart_page = "Company Cart" if user_type == "Company" else "My Cart"
                 if st.button("🧾 Go to My Cart", width="stretch", type="primary"):
-                    st.session_state.current_page    = cart_page
-                    st.session_state.show_cart_popup = False
+                    st.session_state.current_page = cart_page
                     st.rerun()
             with col2:
                 if st.button("Close", width="stretch"):
-                    st.session_state.show_cart_popup = False
                     st.rerun()
 
         cart_popup()
