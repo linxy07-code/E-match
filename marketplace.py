@@ -157,6 +157,8 @@ def render_marketplace_page(db=None):
     # Get current user's region
     current_user_id = st.session_state.get("user_id")
     user_region = st.session_state.get("region") or "All Regions"
+    if user_region == "Penang":
+        user_region = "Pulau Pinang"
             
     # ── Filters ──────────────────────────────────────────────────────────────
     f1, f2, f3, f4 = st.columns([2.5, 1.2, 1.2, 1.2])

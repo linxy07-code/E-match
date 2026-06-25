@@ -48,6 +48,8 @@ def render_company_marketplace(db, user_id):
 
     # Use the logged-in session region to avoid an extra read on every rerun.
     user_region = st.session_state.get("region", "All Regions")
+    if user_region == "Penang":
+        user_region = "Pulau Pinang"
 
     # ── CSS Layout Styles ─────────────────────────────────────────────────────
     st.markdown("""
