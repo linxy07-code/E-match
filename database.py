@@ -270,14 +270,28 @@ class EcoMatchDB:
 
     # ── USER IDENTITY MANAGEMENT ──────────────────────────────────────────────
 
-    def add_user(self, username, password, region, user_type, email,
-                 phone_number=None, company_name=None, supervisor_name=None, address=None):
+    def add_user(self, username, password, region, user_type, email,phone_number=None, company_name=None, supervisor_name=None, address=None):
         password_hash = bcrypt.hashpw(
             password.encode("utf-8"), bcrypt.gensalt()
         ).decode("utf-8")
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
+                    # ── EMAIL + TYPE UNIQUENESS CHECK ─────────────────────────
+                    # Allow at most 1 Personal and 1 Company account per email
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM users WHERE email = %s AND user_type = %s",
+                        (email.strip(), user_type),
+                    )
+                    if cursor.fetchone()["count"] > 0:
+                        return {
+                            "success": False,
+                            "error": (
+                                f"A {user_type} account already exists for this email address. "
+                                "Each email may only be used once per account type."
+                            ),
+                        }
+                    # ── INSERT ────────────────────────────────────────────────
                     cursor.execute(
                         """INSERT INTO users
                                (username, password_hash, region, user_type, email,
